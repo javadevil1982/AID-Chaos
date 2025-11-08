@@ -101,11 +101,3 @@ This ensures that even at low levels, players still have a fair chance, while hi
 
 ---
 
-## Future Extensions
-
-- Dynamic event modifiers (environmental factors, fatigue, equipment)
-- Temporary attribute boosts or penalties
-- Optional manual mode for explicit rolling
-- Integration with external databases for persistent character states
-
----
