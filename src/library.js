@@ -86,6 +86,70 @@ function AidChaos(hook, inText, inStop) {
             }
         }
 
+        // Find a story card by its exact title.
+        // Returns the card object reference if found, otherwise null.
+        findStoryCard(title) {
+            this.logDebug('findStoryCard - start', { title });
+            try {
+                if (!Array.isArray(storyCards)) {
+                    this.logDebug('findStoryCard - storyCards not available');
+                    return null;
+                }
+                for (const card of storyCards) {
+                    // Defensive check: skip invalid entries
+                    if (!card || typeof card.title !== 'string') continue;
+                    if (card.title === title) {
+                        this.logDebug('findStoryCard - found', { title });
+                        // Return the live card reference (not a copy) so callers can modify it
+                        return card;
+                    }
+                }
+                this.logDebug('findStoryCard - not found', { title });
+                return null;
+            } catch (err) {
+                this.logDebug('findStoryCard - error', err);
+                return null;
+            }
+        }
+
+        // Create a new story card or update an existing one by title.
+        // If a card with the given title exists, its 'entry' is overwritten.
+        // If not, a new card object is appended to the global 'storyCards' array.
+        // Returns the card object reference.
+        createOrUpdateStoryCard(title, entryText) {
+            this.logDebug('createOrUpdateStoryCard - start', { title, entryText });
+            try {
+                if (!Array.isArray(storyCards)) {
+                    // If storyCards is missing, create it on globalThis for compatibility
+                    this.logDebug('createOrUpdateStoryCard - storyCards missing, creating array');
+                    globalThis.storyCards = [];
+                }
+                const existing = this.findStoryCard(title);
+                if (existing) {
+                    // Update the entry and timestamp
+                    this.logDebug('createOrUpdateStoryCard - updating existing card');
+                    existing.entry = entryText;
+                    existing.updatedAt = new Date().toISOString();
+                    return existing;
+                }
+                // Construct a minimal story card object and append it
+                const card = {
+                    type: 'class',
+                    title: title,
+                    keys: title,
+                    entry: entryText,
+                    description: '',
+                    updatedAt: new Date().toISOString()
+                };
+                storyCards.push(card);
+                this.logDebug('createOrUpdateStoryCard - created new card', card);
+                return card;
+            } catch (err) {
+                this.logDebug('createOrUpdateStoryCard - error', err);
+                return null;
+            }
+        }
+
         // Determine whether a type string represents a Do or Say action
         // Accepts strings like 'do', 'say' and returns boolean.
         isDoSay(type) {
@@ -194,6 +258,28 @@ function AidChaos(hook, inText, inStop) {
                 this.logDebug('handleContext - end');
                 return [text, stopFlag === true];
             }
+
+            //CheckStoryCard
+            // Ensure a story card named "AidChaos Configuration" exists.
+            // If it does not exist, create it with entry text "HalloWelt".
+            // If it exists, overwrite its entry with "HalloWelt2".
+            try {
+                this.logDebug('handleContext - CheckStoryCard - start');
+                const cfgTitle = 'AidChaos Configuration';
+                const existing = this.findStoryCard(cfgTitle);
+                if (!existing) {
+                    this.logDebug('handleContext - CheckStoryCard - not found, creating');
+                    this.createOrUpdateStoryCard(cfgTitle, 'HalloWelt');
+                } else {
+                    this.logDebug('handleContext - CheckStoryCard - found, updating');
+                    this.createOrUpdateStoryCard(cfgTitle, 'HalloWelt2');
+                }
+                this.logDebug('handleContext - CheckStoryCard - end');
+            } catch (err) {
+                this.logDebug('handleContext - CheckStoryCard - error', err);
+            }
+
+            //CheckStoryCard end
 
             // For testing: append a newline and the given test suffix
             this.logDebug('handleContext - action is do/say, appending test suffix');
