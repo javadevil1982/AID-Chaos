@@ -98,6 +98,5 @@ This ensures that even at low levels, players still have a fair chance, while hi
 
 5. The AI generates a fitting narrative response based on that result.
 
-
 ---
 

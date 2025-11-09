@@ -416,3 +416,6 @@ FodyWeavers.xsd
 *.msix
 *.msm
 *.msp
+**/AutoCards/**
+**/Empty/**
+AI_Dungeon_Scripting_API_Overview.md
