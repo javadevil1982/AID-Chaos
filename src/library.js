@@ -56,33 +56,319 @@ function AidChaos(hook, inText, inStop) {
             };
 
             this.logDebug('AidChaosLib initialized', { showDebug: this.showDebug });
+
+            // Initialize attribute trigger map with default RPG attributes and triggers.
+            // Purpose: Provide a clear, editable mapping from attribute names to the
+            // associated trigger words that CHAOS will look for in player input.
+            // Keep this structure compact and easy to edit for scenario authors.
+            this.attributes = AidChaosLib.getDefaultAttributes();
         }
 
-        // Read a past action from the global history array in a safe manner.
-        // lookBack: 0 = most recent action. Returns a frozen object { text, type }.
-        readPastAction(lookBack) {
-            // Log entry for debugging
-            this.logDebug('readPastAction - start', { lookBack });
-            try {
-                // Default empty action
-                let action = {};
-                if (Array.isArray(history) && history.length > 0) {
-                    // Compute an index with bounds checking similar to Auto-Cards
-                    // Use the same indexing scheme: history[history.length - 1 - abs(lookBack)]
-                    const index = Math.max(0, history.length - 1 - Math.abs(lookBack || 0));
-                    action = history[index] ?? {};
+        // Return the default attributes mapping.
+        // Purpose: Centralizes the default attribute definitions so they can be
+        // inspected or overridden by scenario code before runtime.
+        static getDefaultAttributes() {
+            // Note: Use lowercased trigger words for simple matching later.
+            return {
+                // Strength: physical force, lifting, pushing, breaking
+                Strength: [
+                    'lift', 'push', 'pull', 'break', 'carry', 'shove', 'throw', 'crush', 'pry', 'wrestle',
+                    'smash', 'bash', 'strike', 'hit', 'punch', 'kick', 'slam', 'haul', 'drag', 'tackle',
+                    'rip', 'tear', 'bend', 'heave', 'ram', 'force', 'grapple', 'press', 'burst', 'knock',
+                    'overpower', 'pound', 'shatter', 'thrust', 'brace', 'strain', 'snap'
+                ],
+
+                // Dexterity: fine motor tasks, balancing, dodging, climbing
+                Dexterity: [
+                    'dodge', 'climb', 'balance', 'catch', 'sneak', 'pickpocket', 'acrobat', 'jump', 'steal', 'parry',
+                    'roll', 'flip', 'vault', 'evade', 'weave', 'sidestep', 'crawl', 'slide', 'duck', 'twist',
+                    'maneuver', 'aim', 'draw', 'fire', 'reload', 'dance', 'juggle', 'lockpick',
+                    'tie', 'untie', 'disarm', 'feint', 'backflip', 'tiptoe', 'land', 'react', 'grab', 'snatch', 'silent'
+                ],
+
+                // Intelligence: solving, analyzing, figuring out
+                Intelligence: [
+                    'analyze', 'solve', 'calculate', 'deduce', 'research', 'study', 'investigate', 'learn', 'plan',
+                    'think', 'remember', 'reason', 'strategize', 'inspect', 'examine', 'read', 'interpret', 'translate', 'decipher',
+                    'invent', 'design', 'engineer', 'craft', 'create', 'synthesize', 'formulate', 'compare', 'predict', 'diagnose',
+                    'recall', 'evaluate', 'categorize', 'compile', 'crosscheck', 'hypothesize', 'experiment',
+                    'teach', 'educate', 'program', 'estimate', 'map'
+                ],
+
+                // Charisma: persuasion, negotiation, intimidation, seduction
+                Charisma: [
+                    'persuade', 'convince', 'seduce', 'negotiate', 'charm', 'intimidate', 'flatter', 'lie', 'beguile',
+                    'encourage', 'inspire', 'motivate', 'cheer', 'taunt', 'mock', 'deceive', 'perform', 'entertain', 'comfort',
+                    'lead', 'command', 'manipulate', 'coerce', 'rally', 'boast', 'compliment', 'impress', 'debate', 'argue',
+                    'question', 'beg', 'plead', 'befriend', 'threaten', 'scold', 'praise', 'propose', 'flirt', 'sing', 'act', 'bluff', 'story'
+                ],
+
+                // Perception (alias of wisdom for many systems) kept separate for clarity
+                Perception: [
+                    'see', 'spot', 'hear', 'listen', 'discover', 'detect', 'observe', 'scan', 'search',
+                    'notice', 'smell', 'sense', 'feel', 'peek', 'survey', 'inspect',
+                    'track', 'follow', 'glimpse', 'watch', 'recognize', 'identify', 'perceive',
+                    'overhear', 'taste', 'sniff', 'discern', 'clue'
+                ]
+            };
+        }
+
+        // Build normalized attribute trigger sets (single word vs phrase) for faster matching.
+        // Filters out any empty strings and trims spaces. Called lazily before first use.
+        buildNormalizedAttributes() {
+            this.logDebug('buildNormalizedAttributes - start');
+            if (this._normalized) return this._normalized; // cache
+            const normalized = {};
+            for (const [attr, list] of Object.entries(this.attributes)) {
+                const singles = new Set();
+                const phrases = [];
+                for (let raw of list) {
+                    if (typeof raw !== 'string') continue;
+                    const trig = raw.toLowerCase().trim();
+                    if (!trig) continue;
+                    if (/\s/.test(trig)) {
+                        // phrase trigger -> store for substring search
+                        phrases.push(trig);
+                    } else {
+                        singles.add(trig);
+                    }
                 }
-                // Normalize returned properties: prefer 'text' then 'rawText', default to empty string
-                const result = Object.freeze({
-                    text: action?.text ?? action?.rawText ?? "",
-                    type: action?.type ?? "unknown"
-                });
-                this.logDebug('readPastAction - end', result);
-                return result;
+                normalized[attr] = { singles, phrases };
+            }
+            this._normalized = normalized;
+            this.logDebug('buildNormalizedAttributes - end', normalized);
+            return normalized;
+        }
+
+        // Load, parse, normalize and (if needed) create/update the configuration
+        // story card named "AidChaos Configuration". Returns the resulting
+        // settings object with structure { enabled: boolean, attributes: {<Name>: number} }.
+        // This version uses only the human-readable card format (no JSON tail) and
+        // follows AutoCards-style parsing for resilience.
+        loadConfiguration() {
+            this.logDebug('loadConfiguration - start');
+            try {
+                const cfgTitle = 'AidChaos Configuration';
+
+                // Default settings: enabled true, default attributes set to 5
+                const defaults = { enabled: true, attributes: {} };
+                const defaultAttrKeys = Object.keys(AidChaosLib.getDefaultAttributes());
+                for (const k of defaultAttrKeys) defaults.attributes[k] = 5;
+
+                // Helper: build canonical card text (human readable only)
+                const buildCardText = (enabled, attributes) => {
+                    const lines = [];
+                    lines.push('AidChaos enabled: ' + (enabled ? 'true' : 'false'));
+                    lines.push('');
+                    lines.push('Attributes:');
+                    for (const key of Object.keys(attributes)) {
+                        lines.push('- ' + key + ': ' + attributes[key]);
+                    }
+                    return lines.join('\n');
+                };
+
+                // Start with defaults
+                const settings = JSON.parse(JSON.stringify(defaults));
+                const card = this.findStoryCard(cfgTitle);
+
+                if (!card) {
+                    // No card: create one with normalized defaults and return settings
+                    this.logDebug('loadConfiguration - card not found, creating with defaults');
+                    const newText = buildCardText(settings.enabled, settings.attributes);
+                    this.createOrUpdateStoryCard(cfgTitle, newText, 'settings');
+                    this.logDebug('loadConfiguration - created card with defaults');
+                    this.logDebug('loadConfiguration - end', settings);
+                    return settings;
+                }
+
+                // Card exists: parse human-readable content
+                const raw = (card.entry || '').toString();
+
+                // 1) Parse enabled flag. Accept variations like leading '>' or whitespace.
+                const enabledMatch = raw.match(/(?:^|\n)\s*>?\s*AidChaos\s*enabled\s*:\s*(true|false)/i);
+                if (enabledMatch) {
+                    settings.enabled = /^true$/i.test(enabledMatch[1]);
+                    this.logDebug('loadConfiguration - parsed enabled flag', { enabled: settings.enabled });
+                }
+
+                // 2) Parse Attributes section. Capture text after the Attributes: header.
+                const attrSectionMatch = raw.match(/Attributes\s*:\s*([\s\S]*?)$/i);
+                if (attrSectionMatch) {
+                    const attrLines = attrSectionMatch[1].split(/\n/);
+                    for (const line of attrLines) {
+                        // Match lines like "- Strength: 5" or "Strength: 5" optionally prefixed by '>' or whitespace
+                        const m = line.match(/(?:^|\s|>)*\s*-?\s*([A-Za-z][A-Za-z0-9 _'\-]+)\s*:\s*(-?\d+)/);
+                        if (m) {
+                            const rawKey = m[1].trim();
+                            const val = Number(m[2]);
+                            // Map key case-insensitively to default keys
+                            const matchKey = defaultAttrKeys.find(dk => dk.toLowerCase() === rawKey.toLowerCase()) || rawKey;
+                            if (Number.isFinite(val)) {
+                                settings.attributes[matchKey] = Math.min(10, Math.max(1, Math.floor(val)));
+                                this.logDebug('loadConfiguration - parsed attribute', { key: matchKey, value: settings.attributes[matchKey] });
+                            }
+                        }
+                    }
+                }
+
+                // Ensure all default keys exist and are clamped to 1..10
+                for (const k of defaultAttrKeys) {
+                    if (!(k in settings.attributes)) settings.attributes[k] = 5;
+                    else settings.attributes[k] = Math.min(10, Math.max(1, Math.floor(settings.attributes[k])));
+                }
+
+                // Build normalized card text and update if differing
+                const normalizedText = buildCardText(settings.enabled, settings.attributes);
+                if ((card.entry || '') !== normalizedText) {
+                    this.logDebug('loadConfiguration - normalized differs, updating card');
+                    this.createOrUpdateStoryCard(cfgTitle, normalizedText, 'settings');
+                } else {
+                    this.logDebug('loadConfiguration - card already normalized');
+                }
+
+                this.logDebug('loadConfiguration - end', settings);
+                return settings;
             } catch (err) {
-                // On any error, return a safe default
-                this.logDebug('readPastAction - error', err);
-                return Object.freeze({ text: "", type: "unknown" });
+                this.logDebug('loadConfiguration - error', err);
+                // On error, fallback to basic defaults
+                const fallback = { enabled: true, attributes: {} };
+                const defaultAttrKeys = Object.keys(AidChaosLib.getDefaultAttributes());
+                for (const k of defaultAttrKeys) fallback.attributes[k] = 5;
+                this.logDebug('loadConfiguration - end with fallback', fallback);
+                return fallback;
+            }
+        }
+
+        // Provide a convenient accessor for attribute triggers.
+        // Purpose: Return the attribute name whose trigger list contains any
+        // of the words present in the given lowercased token array.
+        // tokens: array of lowercased words extracted from an input string.
+        getAttributeFromTokens(tokens) {
+            this.logDebug('getAttributeFromTokens - start', { tokens });
+            // Iterate attributes and their triggers to find the first match
+            for (const [attr, triggers] of Object.entries(this.attributes)) {
+                for (const trig of triggers) {
+                    if (tokens.includes(trig)) {
+                        this.logDebug('getAttributeFromTokens - matched', { attr, trig });
+                        return attr;
+                    }
+                }
+            }
+            this.logDebug('getAttributeFromTokens - no match');
+            return null;
+        }
+
+        // Determine attribute from tokens + raw text. Priority: phrase triggers first then single tokens.
+        getAttributeFromTriggers(tokens, rawText) {
+            this.logDebug('getAttributeFromTriggers - start', { tokens });
+            try {
+                const norm = this.buildNormalizedAttributes();
+                const lowerText = (rawText || '').toLowerCase();
+                // Phrase scan first
+                for (const [attr, sets] of Object.entries(norm)) {
+                    for (const phrase of sets.phrases) {
+                        if (lowerText.includes(phrase)) {
+                            this.logDebug('getAttributeFromTriggers - matched phrase', { attr, phrase });
+                            return attr;
+                        }
+                    }
+                }
+                // Single token scan
+                for (const [attr, sets] of Object.entries(norm)) {
+                    for (const token of sets.singles) {
+                        if (tokens.includes(token)) {
+                            this.logDebug('getAttributeFromTriggers - matched token', { attr, token });
+                            return attr;
+                        }
+                    }
+                }
+            } catch (e) {
+                this.logDebug('getAttributeFromTriggers - error', e);
+            }
+            this.logDebug('getAttributeFromTriggers - no match');
+            return null;
+        }
+
+        // Tokenize an input string into lowercase words for simple matching.
+        // Returns an array of tokens. Splits on non-word characters and filters empties.
+        tokenize(text) {
+            this.logDebug('tokenize - start', { text });
+            try {
+                if (typeof text !== 'string') return [];
+                const tokens = text
+                    .toLowerCase()
+                    .replace(/[“”‘’"<>\[\]{}()]/g, ' ')
+                    .split(/[^a-z0-9']+/i)
+                    .map(t => t.trim())
+                    .filter(t => t.length > 0);
+                this.logDebug('tokenize - tokens', tokens);
+                return tokens;
+            } catch (e) {
+                this.logDebug('tokenize - error', e);
+                return [];
+            }
+        }
+
+        // Detect whether an attribute name is explicitly mentioned in the given text.
+        // Returns the attribute key (matching default key casing) or null.
+        attributeMentionInText(text) {
+            this.logDebug('attributeMentionInText - start', { text });
+            try {
+                if (typeof text !== 'string') return null;
+                const defaultAttrKeys = Object.keys(AidChaosLib.getDefaultAttributes());
+                const lower = text.toLowerCase();
+                for (const key of defaultAttrKeys) {
+                    // Match whole word occurrences of the attribute name (case-insensitive)
+                    const pattern = new RegExp('\\b' + key.toLowerCase() + '\\b', 'i');
+                    if (pattern.test(lower)) {
+                        this.logDebug('attributeMentionInText - matched', { key });
+                        return key;
+                    }
+                }
+                this.logDebug('attributeMentionInText - no match');
+                return null;
+            } catch (e) {
+                this.logDebug('attributeMentionInText - error', e);
+                return null;
+            }
+        }
+
+        // Perform a W100 roll using the attribute value and classify the outcome
+        // according to the README's rules. Returns { roll, base, resultType, humanMessage }.
+        performAttributeRoll(attrName, attrValue) {
+            this.logDebug('performAttributeRoll - start', { attrName, attrValue });
+            try {
+                const roll = Math.floor(Math.random() * 100) + 1; // 1..100
+                const base = 20 + (Number(attrValue) * 5);
+                const critThreshold = Math.max(1, Math.floor(base * 0.1));
+                const partialThreshold = base + 15;
+                const failThreshold = 90 + Math.floor(base * 0.1);
+
+                let resultType = 'Failure';
+                let humanMessage = '';
+                if (roll === 1 || roll <= critThreshold) {
+                    resultType = 'Critical Success';
+                    humanMessage = 'Outstanding success. The action succeeds spectacularly.';
+                } else if (roll <= base) {
+                    resultType = 'Success';
+                    humanMessage = 'Normal success. The action succeeds.';
+                } else if (roll <= partialThreshold) {
+                    resultType = 'Partial Success';
+                    humanMessage = 'Partial success. The action succeeds with a drawback.';
+                } else if (roll <= failThreshold) {
+                    resultType = 'Failure';
+                    humanMessage = 'Failure. The action fails.';
+                } else {
+                    resultType = 'Critical Failure';
+                    humanMessage = 'Critical failure. Catastrophic result.';
+                }
+
+                const result = { roll, base, resultType, humanMessage };
+                this.logDebug('performAttributeRoll - end', result);
+                return result;
+            } catch (e) {
+                this.logDebug('performAttributeRoll - error', e);
+                return { roll: 1, base: 0, resultType: 'Critical Success', humanMessage: 'Defaulted to critical success on error.' };
             }
         }
 
@@ -116,7 +402,7 @@ function AidChaos(hook, inText, inStop) {
         // If a card with the given title exists, its 'entry' is overwritten.
         // If not, a new card object is appended to the global 'storyCards' array.
         // Returns the card object reference.
-        createOrUpdateStoryCard(title, entryText) {
+        createOrUpdateStoryCard(title, entryText, cardtype) {
             this.logDebug('createOrUpdateStoryCard - start', { title, entryText });
             try {
                 if (!Array.isArray(storyCards)) {
@@ -134,7 +420,7 @@ function AidChaos(hook, inText, inStop) {
                 }
                 // Construct a minimal story card object and append it
                 const card = {
-                    type: 'class',
+                    type: cardtype,
                     title: title,
                     keys: title,
                     entry: entryText,
@@ -215,30 +501,10 @@ function AidChaos(hook, inText, inStop) {
             }
         }
 
-        // Handle input hook: determine whether the incoming user action is a Do/Say action.
-        // If the action is not a 'do' or 'say', return the original text immediately.
-        // If the action is 'do' or 'say', append a newline and the test suffix for verification.
-        // This implementation delegates action-type detection to getActionType for reuse.
+        // Handle input hook
         handleInput(text) {
-            // Log entry
-            this.logDebug('handleInput - start', { text });
-
-            // Use our robust detection to determine the action type; provide the input text as a fallback
-            const actionType = this.getActionType(0, text);
-            this.logDebug('handleInput - detected actionType', { actionType });
-
-            // If the action is not a 'do' or 'say', leave the input unchanged
-            if (!this.isDoSay(actionType)) {
-                this.logDebug('handleInput - action not do/say, returning original text');
-                this.logDebug('handleInput - end');
-                return text;
-            }
-
-            // For testing: append a newline and the given test suffix
-            const modified = text + '\n' + '[Write the Responce as childish as possible]';
-            this.logDebug('handleInput - action is do/say, returning modified text', { modified });
-            this.logDebug('handleInput - end');
-            return modified;
+            this.logDebug('handleInput - text unchanged');
+            return text;
         }
 
         // Handle context hook: return the expected tuple [text, stopFlag].
@@ -259,27 +525,72 @@ function AidChaos(hook, inText, inStop) {
                 return [text, stopFlag === true];
             }
 
-            //CheckStoryCard
-            // Ensure a story card named "AidChaos Configuration" exists.
-            // If it does not exist, create it with entry text "HalloWelt".
-            // If it exists, overwrite its entry with "HalloWelt2".
+            // Load configuration from the "AidChaos Configuration" story card.
+            // The logic for loading, parsing and normalizing the card has been
+            // moved into loadConfiguration(). Call it here and persist the
+            // resulting settings to state for later use.
             try {
-                this.logDebug('handleContext - CheckStoryCard - start');
-                const cfgTitle = 'AidChaos Configuration';
-                const existing = this.findStoryCard(cfgTitle);
-                if (!existing) {
-                    this.logDebug('handleContext - CheckStoryCard - not found, creating');
-                    this.createOrUpdateStoryCard(cfgTitle, 'HalloWelt');
-                } else {
-                    this.logDebug('handleContext - CheckStoryCard - found, updating');
-                    this.createOrUpdateStoryCard(cfgTitle, 'HalloWelt2');
+                this.logDebug('handleContext - invoking loadConfiguration');
+                const settings = this.loadConfiguration();
+                // Persist to state so other hooks can use the current settings
+                try {
+                    state.AidChaosConfig = settings;
+                } catch (e) {
+                    // Non-fatal: if state is unavailable or read-only, continue
+                    this.logDebug('handleContext - failed to persist settings to state', e);
                 }
-                this.logDebug('handleContext - CheckStoryCard - end');
-            } catch (err) {
-                this.logDebug('handleContext - CheckStoryCard - error', err);
-            }
+                this.logDebug('handleContext - loaded settings', settings);
 
-            //CheckStoryCard end
+                // If the system is explicitly disabled, skip CHAOS processing
+                if (settings.enabled === false) {
+                    this.logDebug('handleContext - CHAOS disabled in settings, skipping');
+                    return [text, stopFlag === true];
+                }
+
+                // Determine whether the most recent user action (history) mentions an attribute
+                // or contains trigger keywords. We check the last history entry, not the current
+                // `text` parameter. If no attribute is detected, do nothing.
+                const lastAction = this.readPastAction(0);
+                const lastText = (lastAction.text || "").toString();
+                this.logDebug('handleContext - lastAction text', { lastText });
+
+                // 1) Prefer explicit attribute name mentions in the raw history text
+                const explicitAttr = this.attributeMentionInText(lastText);
+                // 2) If no explicit mention, attempt trigger-word detection via tokenization
+                let detectedAttr = explicitAttr || null;
+                if (!detectedAttr) {
+                    const tokens = this.tokenize(lastText);
+                    detectedAttr = this.getAttributeFromTriggers(tokens, lastText);
+                }
+
+                // If still no attribute detected, leave context unchanged
+                if (!detectedAttr) {
+                    this.logDebug('handleContext - no attribute detected, exiting');
+                    return [text, stopFlag === true];
+                }
+
+                // Normalize detected attribute key to the case used in settings (case-insensitive match)
+                const defaultAttrKeys = Object.keys(AidChaosLib.getDefaultAttributes());
+                const matchKey = defaultAttrKeys.find(dk => dk.toLowerCase() === detectedAttr.toLowerCase()) || detectedAttr;
+                const attrValue = Number(settings.attributes?.[matchKey] ?? 5) || 5;
+                this.logDebug('handleContext - detected attribute and value', { matchKey, attrValue });
+
+                // Perform the roll and compute the outcome
+                const rollResult = this.performAttributeRoll(matchKey, attrValue);
+                this.logDebug('handleContext - rollResult', rollResult);
+
+                // Build a concise human-readable CHAOS result string to append to the context
+                const chaosMessage = (
+                    '[Treat the action as ' + rollResult.resultType + ' (' + rollResult.humanMessage +')]');
+
+                // Append the CHAOS result to the outgoing context text and return
+                const modified = text + '\n' + chaosMessage;
+                this.logDebug('handleContext - returning modified context with CHAOS message', { modified });
+                return [modified, stopFlag === true];
+
+            } catch (err) {
+                this.logDebug('handleContext - loadConfiguration/error during CHAOS processing', err);
+            }
 
             // For testing: append a newline and the given test suffix
             this.logDebug('handleContext - action is do/say, appending test suffix');
@@ -305,6 +616,30 @@ function AidChaos(hook, inText, inStop) {
         handleDefault(text) {
             this.logDebug('handleDefault - text unchanged');
             return text;
+        }
+
+        // Read a past action from the global history array in a safe manner.
+        // lookBack: 0 = most recent action. Returns a frozen object { text, type }.
+        readPastAction(lookBack) {
+            this.logDebug('readPastAction - start', { lookBack });
+            try {
+                let action = {};
+                if (Array.isArray(history) && history.length > 0) {
+                    // Compute an index with bounds checking similar to Auto-Cards
+                    // Use indexing scheme: history[history.length - 1 - abs(lookBack)]
+                    const index = Math.max(0, history.length - 1 - Math.abs(lookBack || 0));
+                    action = history[index] ?? {};
+                }
+                const result = Object.freeze({
+                    text: action?.text ?? action?.rawText ?? "",
+                    type: action?.type ?? "unknown"
+                });
+                this.logDebug('readPastAction - end', result);
+                return result;
+            } catch (err) {
+                this.logDebug('readPastAction - error', err);
+                return Object.freeze({ text: "", type: "unknown" });
+            }
         }
     }
 

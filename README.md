@@ -100,3 +100,79 @@ This ensures that even at low levels, players still have a fair chance, while hi
 
 ---
 
+## Current Implementation Status (Technical)
+
+The current code in `src/library.js` implements a minimal, deterministic core of CHAOS:
+
+Implemented:
+- Configuration story card `AidChaos Configuration` (auto-created if missing) with:
+  - Enabled flag
+  - Attribute numeric values (1..10) auto-normalized
+- Extended internal trigger lists for each attribute (more than the short examples above) including both single words and multi-word phrases.
+- Context hook (`handleContext`) logic only; rolls are performed only for recent user Do/Say actions.
+- Explicit attribute name detection has priority over trigger matching.
+- Phrase-aware trigger matching (phrases searched in raw text, single tokens matched via tokenization).
+- Single attribute resolution (first match wins; no combined or contested checks).
+- Dice formula and outcome classification exactly as documented.
+- Result injection appended to context as:
+  - `[Treat the action as <ResultType> (<Short Explanation>)]`
+
+Internal utilities:
+- Tokenization helper for robust lowercase splitting.
+- Normalization/caching of trigger sets for performance.
+- Safe history access (`readPastAction`).
+
+Notably adjusted from README examples:
+- The injected bracket text format currently differs from the example (`[Treat the action as ...]` vs `[CHAOS Result: ...]`).
+- Input hook does not modify actions; only context applies CHAOS.
+
+## Not Yet Implemented (Planned / Future Scope)
+
+The following features are described conceptually or implied by design goals but are **not yet implemented** in the current code:
+
+Planned / Missing:
+- Output modifier adaptation: dynamically shaping AI output text based on the roll (currently only metadata appended to context, output unchanged).
+- Configurable roll formula (base scaling factors hard-coded; no per-scenario overrides yet).
+- Multi-attribute / contested checks (e.g. Strength vs Dexterity resolution or best-of system).
+- More expressive contextual result injection (e.g. including roll number, base value, and guidance for narrative tone) using the `[CHAOS Result: ...]` format.
+- Player-facing or scenario-author management of trigger words (currently fixed in code; not editable through the configuration card).
+- Attribute advancement, progression, or temporary modifiers (buffs/debuffs).
+- Outcome-driven side effects (injury flags, advantage/disadvantage, chained follow-up rolls).
+- Localization / alternate language result messages.
+- Retry/Continue specific handling (currently the same logic path; no suppression of duplicate re-rolls on immediate retries).
+- Statistical logging or history of past rolls inside `state` or a dedicated story card.
+- Separation of short and long trigger sets (and weighting) to reduce false positives.
+- Configurable enabling/disabling of phrase vs token trigger detection.
+
+## Roadmap Suggestions
+
+Near-Term:
+- Align result message format with README example (`[CHAOS Result: ...]`).
+- Add roll details: `Roll: X / Base: Y` for improved downstream prompt clarity.
+- Provide optional configuration for formula factors and message style.
+
+Mid-Term:
+- Implement output modifier transformation to integrate roll outcome into narrative automatically.
+- Allow dynamic trigger customization via the config card (comma-separated lists per attribute).
+- Introduce temporary modifiers and status effects.
+
+Long-Term:
+- Multi-attribute contested mechanics and advantage/disadvantage systems.
+- Memory / progression: leveling attributes based on usage frequency.
+- Card-based logging of past roll outcomes and statistics.
+
+---
+
+## Editing & Contribution Notes
+
+When extending the system:
+- Update this README with any newly implemented features (move items from "Not Yet Implemented" to "Implemented").
+- Keep comments in code clear and concise (English only, ASCII) per project standards.
+- Ensure configuration parsing remains resilient (attribute validation, clamping, graceful fallback).
+
+---
+
+## Summary
+
+CHAOS currently provides a lightweight attribute-driven resolution layer with automatic detection and roll classification. It is intentionally minimal and designed for incremental expansion toward richer narrative integration and greater configurability.
+
