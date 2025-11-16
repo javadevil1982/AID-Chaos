@@ -1,10 +1,28 @@
-// AidChaos shared library - minimal skeleton
-// This file has been simplified to a minimal, well-documented scaffold
-// so we can rebuild functionality step-by-step without side effects.
-
-// Main exported entry point for the AidChaos library
 function AidChaos(hook, inText, inStop) {
     "use strict";
+
+/*
+AidChaos - Controlled Heuristic Adaptive Outcome System v0.9
+Made by Javadevil - December 2024
+
+This AI Dungeon script automatically adds invisible dice-based resolution mechanics to player actions.
+It detects attribute-related keywords and explicit attribute mentions in player input, then performs 
+appropriate W100 rolls using character stats (1-10) to determine success/failure outcomes.
+
+The AI receives outcome guidance through context injection, allowing it to narrate results naturally
+without exposing the underlying mechanics to the player.
+
+Free and open-source for anyone to use within their own scenarios or scripts!
+
+Usage:
+- Simply play naturally! The system detects action keywords like "push", "climb", "persuade", etc.
+- Explicit attribute mentions (e.g., "using my strength") always trigger that specific attribute
+- All mechanics are invisible to the player; the AI narrates outcomes based on roll results
+- Configure attributes via the auto-generated story card (values 1-10, default is 5 for all)
+
+For the Installation Guide, advanced usage, customization options, and technical details, see the README.md file in the project repository:
+https://github.com/javadevil1982/AID-Chaos
+*/
 
     const STOP = inStop === true;
 
@@ -16,7 +34,7 @@ function AidChaos(hook, inText, inStop) {
 
     // Enable verbose debug output when true. Used by logDebug inside this function.
     // Toggle to `false` to silence internal debug logging.
-    const showDebugOutput = true;
+    const showDebugOutput = false;
 
     // logDebug: centralized debug logging helper used throughout AidChaos.
     // This avoids scattered console.log checks and is safe in restricted envs.
@@ -550,11 +568,11 @@ function AidChaos(hook, inText, inStop) {
             }
         }
 
-        // Determine whether a type string represents a Do or Say action
-        // Accepts strings like 'do', 'say' and returns boolean.
-        isDoSay(type) {
-            // Simple helper to centralize Do/Say checks
-            return (type === 'do' || type === 'say');
+        // Determine whether a type string represents a Do action
+        // Accepts strings like 'do' and returns boolean.
+        isDo(type) {
+            // Simple helper to centralize Do checks
+            return (type === 'do');
         }
 
         // Determine the action type for a recent history entry in a robust,
@@ -632,9 +650,9 @@ function AidChaos(hook, inText, inStop) {
 
             this.logDebug('handleContext - detected actionType:', actionType);
 
-            // If the action is not a do/say action, return immediately with the original text
-            if (actionType !== 'do' && actionType !== 'say') {
-                this.logDebug('handleContext - action not do/say, returning original text');
+            // If the action is not a do action, return immediately with the original text
+            if (actionType !== 'do') {
+                this.logDebug('handleContext - action not do, returning original text');
                 this.logDebug('handleContext - end');
                 return [text, stopFlag === true];
             }
