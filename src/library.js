@@ -67,49 +67,91 @@ function AidChaos(hook, inText, inStop) {
         // Return the default attributes mapping.
         // Purpose: Centralizes the default attribute definitions so they can be
         // inspected or overridden by scenario code before runtime.
+        // Each attribute now includes:
+        // - triggers: array of trigger words/phrases
+        // - guidance_text_critical_success: optional guidance for critical success
+        // - guidance_text_success: optional guidance for success
+        // - guidance_text_partial_success: optional guidance for partial success
+        // - guidance_text_failure: optional guidance for failure
+        // - guidance_text_critical_failure: optional guidance for critical failure
         static getDefaultAttributes() {
             // Note: Use lowercased trigger words for simple matching later.
             return {
                 // Strength: physical force, lifting, pushing, breaking
-                Strength: [
-                    'lift', 'push', 'pull', 'break', 'carry', 'shove', 'throw', 'crush', 'pry', 'wrestle',
-                    'smash', 'bash', 'strike', 'hit', 'punch', 'kick', 'slam', 'haul', 'drag', 'tackle',
-                    'rip', 'tear', 'bend', 'heave', 'ram', 'force', 'grapple', 'press', 'burst', 'knock',
-                    'overpower', 'pound', 'shatter', 'thrust', 'brace', 'strain', 'snap'
-                ],
+                Strength: {
+                    triggers: [
+                        'lift', 'push', 'pull', 'break', 'carry', 'shove', 'throw', 'crush', 'pry', 'wrestle',
+                        'smash', 'bash', 'strike', 'hit', 'punch', 'kick', 'slam', 'haul', 'drag', 'tackle',
+                        'rip', 'tear', 'bend', 'heave', 'ram', 'force', 'grapple', 'press', 'burst', 'knock',
+                        'overpower', 'pound', 'shatter', 'thrust', 'brace', 'strain', 'snap'
+                    ],
+                    guidance_text_critical_success: 'The character greatly exceeds normal physical limits and gains an impressive advantage.',
+                    guidance_text_success: 'The character succeeds at the physical task in a solid and believable way.',
+                    guidance_text_partial_success: 'The character makes progress, but the physical outcome is incomplete or costly.',
+                    guidance_text_failure: 'The physical attempt does not succeed and the obstacle remains in place.',
+                    guidance_text_critical_failure: 'The character badly misjudges their physical power and suffers a setback or harm.'
+                },
 
                 // Dexterity: fine motor tasks, balancing, dodging, climbing
-                Dexterity: [
-                    'dodge', 'climb', 'balance', 'catch', 'sneak', 'pickpocket', 'acrobat', 'jump', 'steal', 'parry',
-                    'roll', 'flip', 'vault', 'evade', 'weave', 'sidestep', 'crawl', 'slide', 'duck', 'twist',
-                    'maneuver', 'aim', 'draw', 'fire', 'reload', 'dance', 'juggle', 'lockpick',
-                    'tie', 'untie', 'disarm', 'feint', 'backflip', 'tiptoe', 'land', 'react', 'grab', 'snatch', 'silent'
-                ],
+                Dexterity: {
+                    triggers: [
+                        'dodge', 'climb', 'balance', 'catch', 'sneak', 'pickpocket', 'acrobat', 'jump', 'steal', 'parry',
+                        'roll', 'flip', 'vault', 'evade', 'weave', 'sidestep', 'crawl', 'slide', 'duck', 'twist',
+                        'maneuver', 'aim', 'draw', 'fire', 'reload', 'dance', 'juggle', 'lockpick',
+                        'tie', 'untie', 'disarm', 'feint', 'backflip', 'tiptoe', 'land', 'react', 'grab', 'snatch', 'silent'
+                    ],
+                    guidance_text_critical_success: 'The character executes the precise movement with extraordinary grace and speed, achieving an optimal result.',
+                    guidance_text_success: 'The character performs the agile or precise action competently and effectively.',
+                    guidance_text_partial_success: 'The character manages the delicate task, but the execution is flawed or draws unwanted attention.',
+                    guidance_text_failure: 'The character cannot execute the fine motor or agile maneuver as intended.',
+                    guidance_text_critical_failure: 'The character loses control, stumbles badly, or creates a loud commotion that worsens the situation.'
+                },
 
                 // Intelligence: solving, analyzing, figuring out
-                Intelligence: [
-                    'analyze', 'solve', 'calculate', 'deduce', 'research', 'study', 'investigate', 'learn', 'plan',
-                    'think', 'remember', 'reason', 'strategize', 'inspect', 'examine', 'read', 'interpret', 'translate', 'decipher',
-                    'invent', 'design', 'engineer', 'craft', 'create', 'synthesize', 'formulate', 'compare', 'predict', 'diagnose',
-                    'recall', 'evaluate', 'categorize', 'compile', 'crosscheck', 'hypothesize', 'experiment',
-                    'teach', 'educate', 'program', 'estimate', 'map'
-                ],
+                Intelligence: {
+                    triggers: [
+                        'analyze', 'solve', 'calculate', 'deduce', 'research', 'study', 'investigate', 'learn', 'plan',
+                        'think', 'remember', 'reason', 'strategize', 'inspect', 'examine', 'read', 'interpret', 'translate', 'decipher',
+                        'invent', 'design', 'engineer', 'craft', 'create', 'synthesize', 'formulate', 'compare', 'predict', 'diagnose',
+                        'recall', 'evaluate', 'categorize', 'compile', 'crosscheck', 'hypothesize', 'experiment',
+                        'teach', 'educate', 'program', 'estimate', 'map'
+                    ],
+                    guidance_text_critical_success: 'The character gains a brilliant insight or solves the problem in a remarkably efficient and creative way.',
+                    guidance_text_success: 'The character figures out the puzzle, recalls the information, or completes the intellectual task successfully.',
+                    guidance_text_partial_success: 'The character grasps part of the solution or finds a clue, but key details remain unclear or require more effort.',
+                    guidance_text_failure: 'The character cannot solve the problem, recall the fact, or understand the mechanism at this time.',
+                    guidance_text_critical_failure: 'The character draws a dangerously wrong conclusion or forgets crucial information, leading to a significant mistake.'
+                },
 
                 // Charisma: persuasion, negotiation, intimidation, seduction
-                Charisma: [
-                    'persuade', 'convince', 'seduce', 'negotiate', 'charm', 'intimidate', 'flatter', 'lie', 'beguile',
-                    'encourage', 'inspire', 'motivate', 'cheer', 'taunt', 'mock', 'deceive', 'perform', 'entertain', 'comfort',
-                    'lead', 'command', 'manipulate', 'coerce', 'rally', 'boast', 'compliment', 'impress', 'debate', 'argue',
-                    'question', 'beg', 'plead', 'befriend', 'threaten', 'scold', 'praise', 'propose', 'flirt', 'sing', 'act', 'bluff', 'story'
-                ],
+                Charisma: {
+                    triggers: [
+                        'persuade', 'convince', 'seduce', 'negotiate', 'charm', 'intimidate', 'flatter', 'lie', 'beguile',
+                        'encourage', 'inspire', 'motivate', 'cheer', 'taunt', 'mock', 'deceive', 'perform', 'entertain', 'comfort',
+                        'lead', 'command', 'manipulate', 'coerce', 'rally', 'boast', 'compliment', 'impress', 'debate', 'argue',
+                        'question', 'beg', 'plead', 'befriend', 'threaten', 'scold', 'praise', 'propose', 'flirt', 'sing', 'act', 'bluff', 'story'
+                    ],
+                    guidance_text_critical_success: 'The character wins over the other party completely, forming a strong positive impression or gaining exceptional cooperation.',
+                    guidance_text_success: 'The character succeeds in the social interaction; the target is inclined to react positively and be more open toward them.',
+                    guidance_text_partial_success: 'The character makes some headway socially, but the target remains guarded or asks for something in return.',
+                    guidance_text_failure: 'The social attempt falls flat; the target is unmoved, skeptical, or uninterested.',
+                    guidance_text_critical_failure: 'The character offends, alienates, or provokes the target, making the situation significantly worse.'
+                },
 
                 // Perception (alias of wisdom for many systems) kept separate for clarity
-                Perception: [
-                    'see', 'spot', 'hear', 'listen', 'discover', 'detect', 'observe', 'scan', 'search',
-                    'notice', 'smell', 'sense', 'feel', 'peek', 'survey', 'inspect',
-                    'track', 'follow', 'glimpse', 'watch', 'recognize', 'identify', 'perceive',
-                    'overhear', 'taste', 'sniff', 'discern', 'clue'
-                ]
+                Perception: {
+                    triggers: [
+                        'see', 'spot', 'hear', 'listen', 'discover', 'detect', 'observe', 'scan', 'search',
+                        'notice', 'smell', 'sense', 'feel', 'peek', 'survey', 'inspect',
+                        'track', 'follow', 'glimpse', 'watch', 'recognize', 'identify', 'perceive',
+                        'overhear', 'taste', 'sniff', 'discern', 'clue'
+                    ],
+                    guidance_text_critical_success: 'The character notices hidden or subtle details that reveal important secrets or give a decisive advantage.',
+                    guidance_text_success: 'The character perceives the relevant details, clues, or dangers in the environment clearly.',
+                    guidance_text_partial_success: 'The character picks up on something, but the information is incomplete or ambiguous.',
+                    guidance_text_failure: 'The character fails to notice the important detail, clue, or threat.',
+                    guidance_text_critical_failure: 'The character misinterprets what they sense, leading to a false assumption or walking into danger.'
+                }
             };
         }
 
@@ -119,10 +161,11 @@ function AidChaos(hook, inText, inStop) {
             this.logDebug('buildNormalizedAttributes - start');
             if (this._normalized) return this._normalized; // cache
             const normalized = {};
-            for (const [attr, list] of Object.entries(this.attributes)) {
+            for (const [attr, attrData] of Object.entries(this.attributes)) {
                 const singles = new Set();
                 const phrases = [];
-                for (let raw of list) {
+                const triggers = attrData.triggers || [];
+                for (let raw of triggers) {
                     if (typeof raw !== 'string') continue;
                     const trig = raw.toLowerCase().trim();
                     if (!trig) continue;
@@ -133,7 +176,7 @@ function AidChaos(hook, inText, inStop) {
                         singles.add(trig);
                     }
                 }
-                normalized[attr] = { singles, phrases };
+                normalized[attr] = { singles, phrases, data: attrData };
             }
             this._normalized = normalized;
             this.logDebug('buildNormalizedAttributes - end', normalized);
@@ -246,7 +289,8 @@ function AidChaos(hook, inText, inStop) {
         getAttributeFromTokens(tokens) {
             this.logDebug('getAttributeFromTokens - start', { tokens });
             // Iterate attributes and their triggers to find the first match
-            for (const [attr, triggers] of Object.entries(this.attributes)) {
+            for (const [attr, attrData] of Object.entries(this.attributes)) {
+                const triggers = attrData.triggers || [];
                 for (const trig of triggers) {
                     if (tokens.includes(trig)) {
                         this.logDebug('getAttributeFromTokens - matched', { attr, trig });
@@ -256,6 +300,45 @@ function AidChaos(hook, inText, inStop) {
             }
             this.logDebug('getAttributeFromTokens - no match');
             return null;
+        }
+
+        // Determine ALL attributes that match triggers in the given tokens and raw text.
+        // Returns an array of attribute names (can be empty).
+        // Priority: phrase triggers first, then single tokens.
+        getAllMatchingAttributes(tokens, rawText) {
+            this.logDebug('getAllMatchingAttributes - start', { tokens });
+            const matched = new Set();
+            try {
+                const norm = this.buildNormalizedAttributes();
+                const lowerText = (rawText || '').toLowerCase();
+
+                // Phrase scan first
+                for (const [attr, sets] of Object.entries(norm)) {
+                    for (const phrase of sets.phrases) {
+                        if (lowerText.includes(phrase)) {
+                            this.logDebug('getAllMatchingAttributes - matched phrase', { attr, phrase });
+                            matched.add(attr);
+                            break; // found one trigger for this attribute, move to next attribute
+                        }
+                    }
+                }
+
+                // Single token scan
+                for (const [attr, sets] of Object.entries(norm)) {
+                    for (const token of sets.singles) {
+                        if (tokens.includes(token)) {
+                            this.logDebug('getAllMatchingAttributes - matched token', { attr, token });
+                            matched.add(attr);
+                            break; // found one trigger for this attribute, move to next attribute
+                        }
+                    }
+                }
+            } catch (e) {
+                this.logDebug('getAllMatchingAttributes - error', e);
+            }
+            const result = Array.from(matched);
+            this.logDebug('getAllMatchingAttributes - result', result);
+            return result;
         }
 
         // Determine attribute from tokens + raw text. Priority: phrase triggers first then single tokens.
@@ -310,31 +393,45 @@ function AidChaos(hook, inText, inStop) {
         }
 
         // Detect whether an attribute name is explicitly mentioned in the given text.
-        // Returns the attribute key (matching default key casing) or null.
-        attributeMentionInText(text) {
-            this.logDebug('attributeMentionInText - start', { text });
+        // Returns an array of all explicitly mentioned attribute names (matching default key casing).
+        attributeMentionsInText(text) {
+            this.logDebug('attributeMentionsInText - start', { text });
+            const mentioned = [];
             try {
-                if (typeof text !== 'string') return null;
+                if (typeof text !== 'string') return mentioned;
                 const defaultAttrKeys = Object.keys(AidChaosLib.getDefaultAttributes());
                 const lower = text.toLowerCase();
                 for (const key of defaultAttrKeys) {
                     // Match whole word occurrences of the attribute name (case-insensitive)
                     const pattern = new RegExp('\\b' + key.toLowerCase() + '\\b', 'i');
                     if (pattern.test(lower)) {
-                        this.logDebug('attributeMentionInText - matched', { key });
-                        return key;
+                        this.logDebug('attributeMentionsInText - matched', { key });
+                        mentioned.push(key);
                     }
                 }
-                this.logDebug('attributeMentionInText - no match');
-                return null;
+                this.logDebug('attributeMentionsInText - result', mentioned);
+                return mentioned;
             } catch (e) {
-                this.logDebug('attributeMentionInText - error', e);
-                return null;
+                this.logDebug('attributeMentionsInText - error', e);
+                return mentioned;
             }
         }
 
+        // Detect whether an attribute name is explicitly mentioned in the given text.
+        // Returns the attribute key (matching default key casing) or null.
+        // DEPRECATED: Use attributeMentionsInText for multi-attribute support.
+        attributeMentionInText(text) {
+            this.logDebug('attributeMentionInText - start', { text });
+            const mentioned = this.attributeMentionsInText(text);
+            const result = mentioned.length > 0 ? mentioned[0] : null;
+            this.logDebug('attributeMentionInText - result', result);
+            return result;
+        }
+
         // Perform a W100 roll using the attribute value and classify the outcome
-        // according to the README's rules. Returns { roll, base, resultType, humanMessage }.
+        // according to the README's rules. Returns { roll, base, resultType, humanMessage, guidanceText }.
+        // attrName: the attribute name
+        // attrValue: the attribute value (1-10)
         performAttributeRoll(attrName, attrValue) {
             this.logDebug('performAttributeRoll - start', { attrName, attrValue });
             try {
@@ -346,29 +443,46 @@ function AidChaos(hook, inText, inStop) {
 
                 let resultType = 'Failure';
                 let humanMessage = '';
+                let guidanceKey = 'guidance_text_failure';
+
                 if (roll === 1 || roll <= critThreshold) {
                     resultType = 'Critical Success';
                     humanMessage = 'Outstanding success. The action succeeds spectacularly.';
+                    guidanceKey = 'guidance_text_critical_success';
                 } else if (roll <= base) {
                     resultType = 'Success';
                     humanMessage = 'Normal success. The action succeeds.';
+                    guidanceKey = 'guidance_text_success';
                 } else if (roll <= partialThreshold) {
                     resultType = 'Partial Success';
                     humanMessage = 'Partial success. The action succeeds with a drawback.';
+                    guidanceKey = 'guidance_text_partial_success';
                 } else if (roll <= failThreshold) {
                     resultType = 'Failure';
                     humanMessage = 'Failure. The action fails.';
+                    guidanceKey = 'guidance_text_failure';
                 } else {
                     resultType = 'Critical Failure';
                     humanMessage = 'Critical failure. Catastrophic result.';
+                    guidanceKey = 'guidance_text_critical_failure';
                 }
 
-                const result = { roll, base, resultType, humanMessage };
+                // Retrieve the custom guidance text for this attribute and result type
+                const attrData = this.attributes[attrName] || {};
+                const guidanceText = attrData[guidanceKey] || humanMessage;
+
+                const result = { roll, base, resultType, humanMessage, guidanceText };
                 this.logDebug('performAttributeRoll - end', result);
                 return result;
             } catch (e) {
                 this.logDebug('performAttributeRoll - error', e);
-                return { roll: 1, base: 0, resultType: 'Critical Success', humanMessage: 'Defaulted to critical success on error.' };
+                return {
+                    roll: 1,
+                    base: 0,
+                    resultType: 'Critical Success',
+                    humanMessage: 'Defaulted to critical success on error.',
+                    guidanceText: 'Defaulted to critical success on error.'
+                };
             }
         }
 
@@ -554,54 +668,90 @@ function AidChaos(hook, inText, inStop) {
                 const lastText = (lastAction.text || "").toString();
                 this.logDebug('handleContext - lastAction text', { lastText });
 
-                // 1) Prefer explicit attribute name mentions in the raw history text
-                const explicitAttr = this.attributeMentionInText(lastText);
-                // 2) If no explicit mention, attempt trigger-word detection via tokenization
-                let detectedAttr = explicitAttr || null;
-                if (!detectedAttr) {
-                    const tokens = this.tokenize(lastText);
-                    detectedAttr = this.getAttributeFromTriggers(tokens, lastText);
-                }
+                // 1) Detect all explicitly mentioned attributes in the raw history text
+                const explicitAttrs = this.attributeMentionsInText(lastText);
 
-                // If still no attribute detected, leave context unchanged
-                if (!detectedAttr) {
-                    this.logDebug('handleContext - no attribute detected, exiting');
+                // 2) Detect all attributes via trigger-word detection via tokenization
+                const tokens = this.tokenize(lastText);
+                const triggerAttrs = this.getAllMatchingAttributes(tokens, lastText);
+
+                // 3) Combine both lists (use Set to avoid duplicates)
+                const allDetectedAttrs = new Set([...explicitAttrs, ...triggerAttrs]);
+                const detectedAttrsList = Array.from(allDetectedAttrs);
+
+                // If no attributes detected, leave context unchanged
+                if (detectedAttrsList.length === 0) {
+                    this.logDebug('handleContext - no attributes detected, exiting');
                     return [text, stopFlag === true];
                 }
 
-                // Normalize detected attribute key to the case used in settings (case-insensitive match)
+                this.logDebug('handleContext - detected attributes', detectedAttrsList);
+
+                // Normalize detected attribute keys to the case used in settings (case-insensitive match)
                 const defaultAttrKeys = Object.keys(AidChaosLib.getDefaultAttributes());
-                const matchKey = defaultAttrKeys.find(dk => dk.toLowerCase() === detectedAttr.toLowerCase()) || detectedAttr;
-                const attrValue = Number(settings.attributes?.[matchKey] ?? 5) || 5;
-                this.logDebug('handleContext - detected attribute and value', { matchKey, attrValue });
 
-                // Perform the roll and compute the outcome
-                const rollResult = this.performAttributeRoll(matchKey, attrValue);
-                this.logDebug('handleContext - rollResult', rollResult);
+                // Roll for each detected attribute and collect results
+                const rollResults = [];
+                let hasFailure = false;
 
-                // Build a concise human-readable CHAOS result string to append to the context
-                const chaosMessage = (
-                    '[Treat the action as ' + rollResult.resultType + ' (' + rollResult.humanMessage +')]');
+                for (const detectedAttr of detectedAttrsList) {
+                    const matchKey = defaultAttrKeys.find(dk => dk.toLowerCase() === detectedAttr.toLowerCase()) || detectedAttr;
+                    const attrValue = Number(settings.attributes?.[matchKey] ?? 5) || 5;
+                    this.logDebug('handleContext - rolling for attribute', { matchKey, attrValue });
+
+                    // Perform the roll and compute the outcome
+                    const rollResult = this.performAttributeRoll(matchKey, attrValue);
+                    this.logDebug('handleContext - rollResult', rollResult);
+
+                    // Track if any roll resulted in failure or critical failure
+                    if (rollResult.resultType === 'Failure' || rollResult.resultType === 'Critical Failure') {
+                        hasFailure = true;
+                    }
+
+                    rollResults.push({
+                        attribute: matchKey,
+                        ...rollResult
+                    });
+                }
+
+                // Build a comprehensive human-readable CHAOS result string to append to the context
+                const chaosLines = ['['];
+
+                for (const result of rollResults) {
+                    chaosLines.push('The part of the action that depended on ' + result.attribute + ' was a ' + result.resultType.toUpperCase() + '.');
+                    if (result.guidanceText)
+                        chaosLines.push('Guidance: ' + result.guidanceText);
+                    chaosLines.push('');
+                }
+
+                // Add causality rule if any failure occurred
+                if (hasFailure) {
+                    chaosLines.push('Causality rule');
+                    chaosLines.push('The declared action may include several parts. If an earlier part fails in a way that makes later parts impossible, do not narrate those later parts as actually happening. You may show the character\'s intention, frustration, or delayed opportunities, but the impossible actions themselves do not occur in this scene.');
+                    chaosLines.push('');
+                }
+
+                // Add narration rule
+                chaosLines.push('Narration rule');
+                chaosLines.push('Use these outcomes when continuing the story.');
+                chaosLines.push('Show the consequences naturally in the scene.');
+                chaosLines.push('Do not mention dice, rolls, or attribute names directly.');
+                chaosLines.push(']');
+
+                const chaosMessage = chaosLines.join('\n');
 
                 // Append the CHAOS result to the outgoing context text and return
                 const modified = text + '\n' + chaosMessage;
                 this.logDebug('handleContext - returning modified context with CHAOS message', { modified });
+                this.logDebug('handleContext - end');
                 return [modified, stopFlag === true];
 
             } catch (err) {
-                this.logDebug('handleContext - loadConfiguration/error during CHAOS processing', err);
+                this.logDebug('handleContext - error during CHAOS processing', err);
+                // On error, return original text unchanged
+                this.logDebug('handleContext - end (error fallback)');
+                return [text, stopFlag === true];
             }
-
-            // For testing: append a newline and the given test suffix
-            this.logDebug('handleContext - action is do/say, appending test suffix');
-            const modified = text + '\n' + '[Write the Responce as childish as possible]';
-
-            // Return the text alongside the explicit stop flag. This keeps the API
-            // flexible and avoids tying the stored STOP value to the instance.
-            const result = [modified, stopFlag === true];
-            this.logDebug('handleContext - prepared result', result);
-            this.logDebug('handleContext - end');
-            return result;
         }
 
         // Handle output hook: return the text unchanged for now.
