@@ -1,6 +1,6 @@
 # CHAOS – Controlled Heuristic Adaptive Outcome System
 
-**Current Version 0.9** | Made by **Javadevil**
+**Current Version 0.9.1** | Made by **Javadevil**
 
 **CHAOS** is an invisible dice-rolling system for AI Dungeon that adds structured, attribute-based resolution mechanics to player actions without requiring any commands or explicit dice notation.
 
@@ -14,6 +14,7 @@ Traditional text-based AI adventures often feel arbitrary — success and failur
 - **W100 dice rolls** using character stats (1–10)
 - **Natural outcome integration** where the AI narrates results based on roll classification
 - **Zero player interaction** — no commands, no visible dice, just seamless storytelling
+- **Optional result display** to show roll outcomes to the player (v0.9.1+)
 
 The system operates entirely behind the scenes, maintaining immersion while ensuring consistent and fair outcomes.
 
@@ -35,7 +36,7 @@ Each character has **five core attributes** rated from **1 to 10**:
 
 Each attribute includes an extensive trigger word list (both single words and multi-word phrases) that the system uses to automatically detect which stat should be tested.
 
-You can attribute trigger words or add own attributes in your copy of the library souce code (search for ```static getDefaultAttributes()```). Therefore, it is not necessary to use the 5 default attributes.
+You can modify attribute trigger words or add own attributes in your copy of the library source code (search for `static getDefaultAttributes()`). Therefore, it is not necessary to use the 5 default attributes.
 
 ### 2. Detection Logic
 
@@ -140,7 +141,6 @@ Do not mention dice, rolls, or attribute names directly.
 ]
 ```
 
-
 ---
 
 ## Permission
@@ -149,10 +149,7 @@ You may use CHAOS without restriction in your own scenarios or scripts, includin
 
 ## Installation Guide
 
-Follow these steps to integrate CHAOS into your AI Dungeon scenario. This guide assumes you only uses this script alone. 
-
-If you want to combine this script with other scripts, I would currently recommend running this one in the hooks first and then the other scripts. I will add later further information to the **Compatibility** section below about combining this script with other popular scripts, 
-as soon as I have performed further compatibility tests.
+Follow these steps to integrate CHAOS into your AI Dungeon scenario.
 
 ### Step 1: Copy the Library
 
@@ -223,6 +220,32 @@ AidChaos enabled: true
 
 Set to `false` to disable the system entirely.
 
+### Result Output (NEW in v0.9.1)
+
+```
+Result Output enabled: false
+```
+
+Set to `true` to display dice roll results at the beginning of each AI output. When enabled, results appear in this format:
+
+```
+[AIDCHAOS Strength (45/70): Success]
+```
+
+Or with multiple attributes:
+
+```
+[AIDCHAOS Strength (45/70): Success, Dexterity (12/65): Critical Success]
+```
+
+The format shows: `Attribute (Roll/Base): Result Type`
+
+- **Roll**: The actual W100 dice roll (1-100)
+- **Base**: The base value from the formula (20 + Attribute × 5)
+- **Result Type**: Critical Success, Success, Partial Success, Failure, or Critical Failure
+
+This setting is useful for players who want transparency about the mechanics, or for debugging/testing scenarios.
+
 ### Attributes
 
 ```
@@ -252,6 +275,7 @@ Create a story card titled **"AidChaos Configuration"** with this content:
 
 ```
 AidChaos enabled: true
+Result Output enabled: false
 
 Attributes:
 - Strength: 5
@@ -267,6 +291,7 @@ If your scenario supports player input (recommended for non-Character-Creator sc
 
 ```
 AidChaos enabled: true
+Result Output enabled: false
 
 Attributes:
 - Strength: ${Your Strength (1-10)}
@@ -324,35 +349,135 @@ guidance_text_success: 'The character succeeds at the physical task in a solid a
 
 ## Compatibility
 
+### General Compatibility
+
 CHAOS is designed to work alongside other AI Dungeon scripts. It follows best practices:
 
 - **Hook-based architecture** (input/context/output modifiers)
 - **State preservation** through `state.AidChaosConfig`
 - **Minimal global namespace pollution**
 - **Graceful error handling**
+- **Auto-detection and skipping** of other script activity
 
-I will try to ensure compatibility with popular scripts, but conflicts may arise if multiple scripts modify the same hooks heavily. I recommend testing in isolated scenarios first.
+### Compatibility with Auto-Cards (v0.9.1+)
 
-Once I have performed further compatibility tests with other popular scripts, I will add this information here.
+CHAOS is now fully compatible with the **Auto-Cards** script. Both scripts can coexist in the same scenario without conflicts.
+
+#### How Compatibility Works
+
+CHAOS includes automatic detection of Auto-Cards activity:
+
+- **Recognizes Auto-Cards patterns**: `/ac` commands, `CONFIRM DELETE`, `>>> please select "continue"`, `{title: ...}` headers, and memory operations
+- **Skips CHAOS processing**: When Auto-Cards is detected, CHAOS passes the text through unchanged
+- **Cleans markers**: Both scripts automatically remove each other's output markers to prevent interference
+
+#### Setting Up Both Scripts Together
+
+**Execution Order in Modifiers:**
+
+The proper hook order ensures both scripts work correctly:
+
+**Input Modifier:**
+```javascript
+// Your "Input" tab with both CHAOS and Auto-Cards
+const modifier = (text) => {
+    // CHAOS first to clean Auto-Cards markers
+    text = AidChaos("input", text);
+    // Then Auto-Cards processes input
+    text = AutoCards("input", text);
+    return { text };
+};
+modifier(text);
+```
+
+**Context Modifier:**
+```javascript
+// Your "Context" tab with both CHAOS and Auto-Cards
+const modifier = (text) => {
+    // CHAOS first to perform attribute rolls
+    [text, stop] = AidChaos("context", text, stop);
+    // Then Auto-Cards processes context and injects card information
+    text = AutoCards("context", text, stop);
+    return { text, stop };
+};
+modifier(text);
+```
+
+**Output Modifier:**
+```javascript
+// Your "Output" tab with both CHAOS and Auto-Cards
+const modifier = (text) => {
+    // Auto-Cards first to process card generation messages
+    text = AutoCards("output", text);
+    // Then CHAOS adds roll result markers (if enabled)
+    text = AidChaos("output", text);
+    return { text };
+};
+modifier(text);
+```
+
+#### Key Points
+
+1. **Input & Context**: CHAOS runs first, then Auto-Cards
+   - CHAOS cleans any leftover markers and performs rolls
+   - Auto-Cards injects card information and memory updates
+   - No interference because CHAOS skips when it detects Auto-Cards activity
+
+2. **Output**: Auto-Cards runs first, then CHAOS
+   - Auto-Cards handles card generation messages
+   - CHAOS appends roll result markers (if Result Output is enabled)
+   - Results appear at the start of the AI response without disrupting Auto-Cards messages
+
+3. **Separate Configuration Cards**
+   - CHAOS uses: `"AidChaos Configuration"` story card
+   - Auto-Cards uses: `"Configure Auto-Cards"` story card
+   - No overlap or conflicts
+
+4. **State Management**
+   - CHAOS stores data in: `state.AidChaosConfig` and `state.AidChaosLastRoll`
+   - Auto-Cards stores data in: `state.AutoCards` and `state.LSIv2`
+   - Both use different keys and don't interfere
+
+#### Example Scenario Setup
+
+If you want to use both CHAOS and Auto-Cards in the same scenario:
+
+1. Follow CHAOS installation steps (copy library to Library tab)
+2. Install Auto-Cards normally (add AutoCards to Library tab, call in hooks)
+3. Update your Input, Context, and Output hooks as shown above
+4. Create the configuration card `"AidChaos Configuration"` (for CHAOS settings) if you want.
+5. Save and play!
+
+#### Testing Compatibility
+
+To verify both scripts are working correctly:
+
+- **CHAOS**: Check the `"AidChaos Configuration"` card exists and updates
+- **Auto-Cards**: Check that auto-generated plot cards are created as expected
+- **Result Output**: If enabled, roll results appear before AI responses without disrupting story
+- **No conflicts**: Both scripts' functionality should work independently
+
+If you encounter issues, ensure the hook order is correct and that both scripts are up to date.
 
 ---
 
 ## Roadmap & Future Features
 
-Currently implemented (v0.9):
+Currently implemented (v0.9.1):
 - ✅ Automatic attribute detection (explicit mentions + trigger keywords)
 - ✅ W100 roll formula with 5-tier outcome classification
 - ✅ Context injection with guidance text
 - ✅ Auto-generated, editable configuration card
 - ✅ Phrase-aware trigger matching (multi-word support)
 - ✅ Multiple attribute detection in single actions
+- ✅ Optional result output display (NEW in v0.9.1)
+- ✅ Compatibility with Auto-Cards script (NEW in v0.9.1)
 
 Not yet implemented (planned):
-- ⬜ Display of dice results in the game (optionally visible to players)
-- ⬜ Compatibility with popular other scripts (e.g., Auto-Cards)
-- ⬜ Support for the Charakter Creator mode
+- ⬜ Support for the Character Creator mode
 - ⬜ Attribute Templates for different genres (fantasy, sci-fi, etc.)
 - ⬜ Further tests to optimize trigger word lists and guidance texts
+- ⬜ Compatibility with other popular scripts (LotRD, etc.)
 
 ---
 
@@ -364,7 +489,22 @@ Set `showDebugOutput = true` in `library.js` (around line 27) to enable console 
 - Which attributes were detected
 - Roll results and base values
 - Outcome classifications
+- Auto-Cards activity detection
 - Errors/warnings
+
+### Version History
+
+**v0.9.1** (Current)
+- Added `Result Output enabled` configuration option
+- Added Auto-Cards compatibility detection and safe pass-through
+- Added marker cleaning for better multi-script support
+- Added result display formatting in output hook
+
+**v0.9** (Initial Release)
+- Core attribute detection system
+- W100 roll mechanics
+- Context injection with guidance text
+- Auto-configuration card generation
 
 ---
 

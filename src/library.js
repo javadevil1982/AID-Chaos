@@ -2,7 +2,7 @@ function AidChaos(hook, inText, inStop) {
     "use strict";
 
 /*
-AidChaos - Controlled Heuristic Adaptive Outcome System v0.9
+AidChaos - Controlled Heuristic Adaptive Outcome System v0.9.1
 Made by Javadevil - December 2024
 
 This AI Dungeon script automatically adds invisible dice-based resolution mechanics to player actions.
@@ -12,7 +12,7 @@ appropriate W100 rolls using character stats (1-10) to determine success/failure
 The AI receives outcome guidance through context injection, allowing it to narrate results naturally
 without exposing the underlying mechanics to the player.
 
-Free and open-source for anyone to use within their own scenarios or scripts!
+Free and open-source for anyone to use within your own scenarios or scripts!
 
 Usage:
 - Simply play naturally! The system detects action keywords like "push", "climb", "persuade", etc.
@@ -201,9 +201,61 @@ https://github.com/javadevil1982/AID-Chaos
             return normalized;
         }
 
+        // Check if text contains AutoCards activity markers.
+        // Purpose: Detect when AutoCards is active so AidChaos can skip processing
+        // and avoid interfering with AutoCards operations.
+        isAutoCardsActivity(text) {
+            this.logDebug('isAutoCardsActivity - start', { text });
+            if (typeof text !== 'string') return false;
+            
+            // Check for AutoCards command patterns
+            const patterns = [
+                /\/\s*A\s*C/i,                                    // "/ac" commands
+                /CONFIRM\s*DELETE/i,                             // Delete confirmations
+                />>>\s*please\s*select\s*"continue"/i,           // Continue prompts
+                /{title:\s*[\s\S]*?}/i,                          // Card title headers
+                />>>\s*[\s\S]*?<<</,                             // AutoCards system messages
+                /summariz(ing|ed)\s+.*\s+memories/i,             // Memory operations
+                /Auto(?:-|\s*)Cards\s+(?:has\s+been|will)/i     // AutoCards status messages
+            ];
+
+            for (const pattern of patterns) {
+                if (pattern.test(text)) {
+                    this.logDebug('isAutoCardsActivity - matched pattern', { pattern: pattern.source });
+                    return true;
+                }
+            }
+
+            // Quick check: treat lines that begin with '/' or '{' as commands and leave them untouched
+            if (/^[\s\n]*[\/\{]/.test(text)) {
+                this.logDebug('isAutoCardsActivity - matched leading / or { command marker');
+                return true;
+            }
+
+            this.logDebug('isAutoCardsActivity - no match');
+            return false;
+        }
+
+        // Remove all [AIDCHAOS ...] markers from text.
+        // Purpose: Clean any AidChaos output markers from input/context to prevent
+        // confusing the AI or other scripts with our internal markers.
+        cleanAidChaosOutputMarkers(text) {
+            this.logDebug('cleanAidChaosOutputMarkers - start');
+            if (typeof text !== 'string') return text;
+
+            // Remove lines starting with [AIDCHAOS
+            const cleaned = text.replace(/^\[AIDCHAOS\s+[^\]]*\]\s*/gm, '');
+            
+            if (cleaned !== text) {
+                this.logDebug('cleanAidChaosOutputMarkers - removed markers');
+            }
+            
+            return cleaned;
+        }
+
         // Load, parse, normalize and (if needed) create/update the configuration
         // story card named "AidChaos Configuration". Returns the resulting
-        // settings object with structure { enabled: boolean, attributes: {<Name>: number} }.
+        // settings object with structure { enabled: boolean, resultOutput: boolean, attributes: {<Name>: number} }.
         // This version uses only the human-readable card format (no JSON tail) and
         // follows AutoCards-style parsing for resilience.
         loadConfiguration() {
@@ -211,15 +263,16 @@ https://github.com/javadevil1982/AID-Chaos
             try {
                 const cfgTitle = 'AidChaos Configuration';
 
-                // Default settings: enabled true, default attributes set to 5
-                const defaults = { enabled: true, attributes: {} };
+                // Default settings: enabled true, resultOutput false, default attributes set to 5
+                const defaults = { enabled: true, resultOutput: false, attributes: {} };
                 const defaultAttrKeys = Object.keys(AidChaosLib.getDefaultAttributes());
                 for (const k of defaultAttrKeys) defaults.attributes[k] = 5;
 
                 // Helper: build canonical card text (human readable only)
-                const buildCardText = (enabled, attributes) => {
+                const buildCardText = (enabled, resultOutput, attributes) => {
                     const lines = [];
                     lines.push('AidChaos enabled: ' + (enabled ? 'true' : 'false'));
+                    lines.push('Result Output enabled: ' + (resultOutput ? 'true' : 'false'));
                     lines.push('');
                     lines.push('Attributes:');
                     for (const key of Object.keys(attributes)) {
@@ -235,7 +288,7 @@ https://github.com/javadevil1982/AID-Chaos
                 if (!card) {
                     // No card: create one with normalized defaults and return settings
                     this.logDebug('loadConfiguration - card not found, creating with defaults');
-                    const newText = buildCardText(settings.enabled, settings.attributes);
+                    const newText = buildCardText(settings.enabled, settings.resultOutput, settings.attributes);
                     this.createOrUpdateStoryCard(cfgTitle, newText, 'settings');
                     this.logDebug('loadConfiguration - created card with defaults');
                     this.logDebug('loadConfiguration - end', settings);
@@ -246,13 +299,20 @@ https://github.com/javadevil1982/AID-Chaos
                 const raw = (card.entry || '').toString();
 
                 // 1) Parse enabled flag. Accept variations like leading '>' or whitespace.
-                const enabledMatch = raw.match(/(?:^|\n)\s*>?\s*AidChaos\s*enabled\s*:\s*(true|false)/i);
+                const enabledMatch = raw.match(/(?:^|\n)\s*>?\s*AidChaos\s+enabled\s*:\s*(true|false)/i);
                 if (enabledMatch) {
                     settings.enabled = /^true$/i.test(enabledMatch[1]);
                     this.logDebug('loadConfiguration - parsed enabled flag', { enabled: settings.enabled });
                 }
 
-                // 2) Parse Attributes section. Capture text after the Attributes: header.
+                // 2) Parse resultOutput flag. Accept variations like leading '>' or whitespace.
+                const resultOutputMatch = raw.match(/(?:^|\n)\s*>?\s*Result\s+Output\s+enabled\s*:\s*(true|false)/i);
+                if (resultOutputMatch) {
+                    settings.resultOutput = /^true$/i.test(resultOutputMatch[1]);
+                    this.logDebug('loadConfiguration - parsed resultOutput flag', { resultOutput: settings.resultOutput });
+                }
+
+                // 3) Parse Attributes section. Capture text after the Attributes: header.
                 const attrSectionMatch = raw.match(/Attributes\s*:\s*([\s\S]*?)$/i);
                 if (attrSectionMatch) {
                     const attrLines = attrSectionMatch[1].split(/\n/);
@@ -279,7 +339,7 @@ https://github.com/javadevil1982/AID-Chaos
                 }
 
                 // Build normalized card text and update if differing
-                const normalizedText = buildCardText(settings.enabled, settings.attributes);
+                const normalizedText = buildCardText(settings.enabled, settings.resultOutput, settings.attributes);
                 if ((card.entry || '') !== normalizedText) {
                     this.logDebug('loadConfiguration - normalized differs, updating card');
                     this.createOrUpdateStoryCard(cfgTitle, normalizedText, 'settings');
@@ -292,7 +352,7 @@ https://github.com/javadevil1982/AID-Chaos
             } catch (err) {
                 this.logDebug('loadConfiguration - error', err);
                 // On error, fallback to basic defaults
-                const fallback = { enabled: true, attributes: {} };
+                const fallback = { enabled: true, resultOutput: false, attributes: {} };
                 const defaultAttrKeys = Object.keys(AidChaosLib.getDefaultAttributes());
                 for (const k of defaultAttrKeys) fallback.attributes[k] = 5;
                 this.logDebug('loadConfiguration - end with fallback', fallback);
@@ -359,37 +419,6 @@ https://github.com/javadevil1982/AID-Chaos
             return result;
         }
 
-        // Determine attribute from tokens + raw text. Priority: phrase triggers first then single tokens.
-        getAttributeFromTriggers(tokens, rawText) {
-            this.logDebug('getAttributeFromTriggers - start', { tokens });
-            try {
-                const norm = this.buildNormalizedAttributes();
-                const lowerText = (rawText || '').toLowerCase();
-                // Phrase scan first
-                for (const [attr, sets] of Object.entries(norm)) {
-                    for (const phrase of sets.phrases) {
-                        if (lowerText.includes(phrase)) {
-                            this.logDebug('getAttributeFromTriggers - matched phrase', { attr, phrase });
-                            return attr;
-                        }
-                    }
-                }
-                // Single token scan
-                for (const [attr, sets] of Object.entries(norm)) {
-                    for (const token of sets.singles) {
-                        if (tokens.includes(token)) {
-                            this.logDebug('getAttributeFromTriggers - matched token', { attr, token });
-                            return attr;
-                        }
-                    }
-                }
-            } catch (e) {
-                this.logDebug('getAttributeFromTriggers - error', e);
-            }
-            this.logDebug('getAttributeFromTriggers - no match');
-            return null;
-        }
-
         // Tokenize an input string into lowercase words for simple matching.
         // Returns an array of tokens. Splits on non-word characters and filters empties.
         tokenize(text) {
@@ -398,7 +427,7 @@ https://github.com/javadevil1982/AID-Chaos
                 if (typeof text !== 'string') return [];
                 const tokens = text
                     .toLowerCase()
-                    .replace(/[“”‘’"<>\[\]{}()]/g, ' ')
+                    .replace(/[""''"<>\[\]{}()]/g, ' ')
                     .split(/[^a-z0-9']+/i)
                     .map(t => t.trim())
                     .filter(t => t.length > 0);
@@ -433,17 +462,6 @@ https://github.com/javadevil1982/AID-Chaos
                 this.logDebug('attributeMentionsInText - error', e);
                 return mentioned;
             }
-        }
-
-        // Detect whether an attribute name is explicitly mentioned in the given text.
-        // Returns the attribute key (matching default key casing) or null.
-        // DEPRECATED: Use attributeMentionsInText for multi-attribute support.
-        attributeMentionInText(text) {
-            this.logDebug('attributeMentionInText - start', { text });
-            const mentioned = this.attributeMentionsInText(text);
-            const result = mentioned.length > 0 ? mentioned[0] : null;
-            this.logDebug('attributeMentionInText - result', result);
-            return result;
         }
 
         // Perform a W100 roll using the attribute value and classify the outcome
@@ -568,13 +586,6 @@ https://github.com/javadevil1982/AID-Chaos
             }
         }
 
-        // Determine whether a type string represents a Do action
-        // Accepts strings like 'do' and returns boolean.
-        isDo(type) {
-            // Simple helper to centralize Do checks
-            return (type === 'do');
-        }
-
         // Determine the action type for a recent history entry in a robust,
         // reusable way. Returns strings like 'do', 'say', 'story', 'continue', or 'unknown'.
         // lookBack: 0 = most recent action. fallbackText is optional and used for heuristics.
@@ -635,8 +646,19 @@ https://github.com/javadevil1982/AID-Chaos
 
         // Handle input hook
         handleInput(text) {
-            this.logDebug('handleInput - text unchanged');
-            return text;
+            this.logDebug('handleInput - start');
+            
+            // Clean any AidChaos output markers from input
+            let cleaned = this.cleanAidChaosOutputMarkers(text);
+            
+            // Check for AutoCards activity - pass through unchanged if detected
+            if (this.isAutoCardsActivity(cleaned)) {
+                this.logDebug('handleInput - AutoCards activity detected, passing through');
+                return cleaned;
+            }
+            
+            this.logDebug('handleInput - end');
+            return cleaned;
         }
 
         // Handle context hook: return the expected tuple [text, stopFlag].
@@ -644,9 +666,18 @@ https://github.com/javadevil1982/AID-Chaos
         handleContext(text, stopFlag) {
             this.logDebug('handleContext - start', { stopFlag });
 
+            // Clean any AidChaos output markers from context
+            let cleaned = this.cleanAidChaosOutputMarkers(text);
+            
+            // Check for AutoCards activity - pass through unchanged if detected
+            if (this.isAutoCardsActivity(cleaned)) {
+                this.logDebug('handleContext - AutoCards activity detected, skipping CHAOS');
+                return [cleaned, stopFlag === true];
+            }
+
             // Use the reusable getActionType helper. Provide the current input as a fallback text
             // so the helper can apply a secondary heuristic if history is unavailable or ambiguous.
-            const actionType = this.getActionType(0, text);
+            const actionType = this.getActionType(0, cleaned);
 
             this.logDebug('handleContext - detected actionType:', actionType);
 
@@ -654,7 +685,7 @@ https://github.com/javadevil1982/AID-Chaos
             if (actionType !== 'do') {
                 this.logDebug('handleContext - action not do, returning original text');
                 this.logDebug('handleContext - end');
-                return [text, stopFlag === true];
+                return [cleaned, stopFlag === true];
             }
 
             // Load configuration from the "AidChaos Configuration" story card.
@@ -676,7 +707,7 @@ https://github.com/javadevil1982/AID-Chaos
                 // If the system is explicitly disabled, skip CHAOS processing
                 if (settings.enabled === false) {
                     this.logDebug('handleContext - CHAOS disabled in settings, skipping');
-                    return [text, stopFlag === true];
+                    return [cleaned, stopFlag === true];
                 }
 
                 // Determine whether the most recent user action (history) mentions an attribute
@@ -700,7 +731,7 @@ https://github.com/javadevil1982/AID-Chaos
                 // If no attributes detected, leave context unchanged
                 if (detectedAttrsList.length === 0) {
                     this.logDebug('handleContext - no attributes detected, exiting');
-                    return [text, stopFlag === true];
+                    return [cleaned, stopFlag === true];
                 }
 
                 this.logDebug('handleContext - detected attributes', detectedAttrsList);
@@ -732,6 +763,13 @@ https://github.com/javadevil1982/AID-Chaos
                     });
                 }
 
+                // Store roll results in state for output hook
+                try {
+                    state.AidChaosLastRoll = rollResults;
+                } catch (e) {
+                    this.logDebug('handleContext - failed to store roll results in state', e);
+                }
+
                 // Build a comprehensive human-readable CHAOS result string to append to the context
                 const chaosLines = ['['];
 
@@ -759,7 +797,7 @@ https://github.com/javadevil1982/AID-Chaos
                 const chaosMessage = chaosLines.join('\n');
 
                 // Append the CHAOS result to the outgoing context text and return
-                const modified = text + '\n' + chaosMessage;
+                const modified = cleaned + '\n' + chaosMessage;
                 this.logDebug('handleContext - returning modified context with CHAOS message', { modified });
                 this.logDebug('handleContext - end');
                 return [modified, stopFlag === true];
@@ -768,15 +806,65 @@ https://github.com/javadevil1982/AID-Chaos
                 this.logDebug('handleContext - error during CHAOS processing', err);
                 // On error, return original text unchanged
                 this.logDebug('handleContext - end (error fallback)');
-                return [text, stopFlag === true];
+                return [cleaned, stopFlag === true];
             }
         }
 
-        // Handle output hook: return the text unchanged for now.
-        // This is the place to implement output transformations or postprocessing.
+        // Handle output hook: optionally prepend roll results to AI output.
+        // This is where we implement the Result Output feature.
         handleOutput(text) {
-            this.logDebug('handleOutput - text unchanged');
-            return text;
+            this.logDebug('handleOutput - start');
+            
+            // Clean any AidChaos output markers from output
+            let cleaned = this.cleanAidChaosOutputMarkers(text);
+            
+            // Check for AutoCards activity - pass through unchanged if detected
+            if (this.isAutoCardsActivity(cleaned)) {
+                this.logDebug('handleOutput - AutoCards activity detected, passing through');
+                return cleaned;
+            }
+
+            try {
+                // Load configuration to check if result output is enabled
+                const settings = state.AidChaosConfig || this.loadConfiguration();
+                
+                if (!settings.resultOutput) {
+                    this.logDebug('handleOutput - result output disabled');
+                    return cleaned;
+                }
+
+                // Check if we have roll results from the context hook
+                const rollResults = state.AidChaosLastRoll;
+                if (!rollResults || !Array.isArray(rollResults) || rollResults.length === 0) {
+                    this.logDebug('handleOutput - no roll results to display');
+                    return cleaned;
+                }
+
+                // Build result output marker
+                // Format: [AIDCHAOS Strength (45/70): Success, Dexterity (12/65): Critical Success]
+                const resultParts = [];
+                for (const result of rollResults) {
+                    const part = result.attribute + ' (' + result.roll + '/' + result.base + '): ' + result.resultType;
+                    resultParts.push(part);
+                }
+                
+                const resultMarker = '[AIDCHAOS ' + resultParts.join(', ') + ']\n';
+                
+                // Clear the stored results
+                try {
+                    delete state.AidChaosLastRoll;
+                } catch (e) {
+                    this.logDebug('handleOutput - failed to clear roll results from state', e);
+                }
+
+                const modified = resultMarker + cleaned;
+                this.logDebug('handleOutput - prepended result marker', { modified });
+                return modified;
+
+            } catch (err) {
+                this.logDebug('handleOutput - error', err);
+                return cleaned;
+            }
         }
 
         // Default handler: called when hook is unrecognized. Returns the
