@@ -2,20 +2,47 @@
 // AidChaosRoller: W100 dice rolling and outcome classification
 // Purpose: Perform attribute rolls and determine success/failure outcomes
 // =====================================================================
+
+// Reference to disabled attribute constant (defined in AidChaosConfiguration)
+// Using same value to avoid circular dependencies
+const ATTRIBUTE_DISABLED_VALUE = -1;
+
 class AidChaosRoller {
     constructor(logDebug, attributesManager) {
         this.logDebug = logDebug;
         this.attributes = attributesManager;
     }
 
+    // Check if an attribute value represents a disabled attribute
+    isDisabledAttribute(attrValue) {
+        return attrValue === ATTRIBUTE_DISABLED_VALUE;
+    }
+
     // Perform a W100 roll for an attribute and classify the outcome
     // attrName: attribute name (e.g., 'Strength')
-    // attrValue: attribute value (1-10)
-    // Returns { roll, base, resultType, humanMessage, guidanceText }
+    // attrValue: attribute value (1-10) or ATTRIBUTE_DISABLED (-1)
+    // Returns { roll, base, resultType, humanMessage, guidanceText, isDisabled }
     roll(attrName, attrValue) {
         this.logDebug('roll - start', attrName, attrValue);
         
         try {
+            // Check for disabled attribute - automatic critical failure without rolling
+            if (this.isDisabledAttribute(attrValue)) {
+                this.logDebug('roll - attribute is disabled, automatic critical failure');
+                const result = {
+                    roll: null,
+                    base: null,
+                    resultType: 'Critical Failure',
+                    humanMessage: 'This attribute is disabled. The action is impossible for this character.',
+                    guidanceText: this.attributes.getGuidanceText(attrName, 'critical_failure') || 
+                        'This attribute is disabled for the character. The action automatically fails in the worst possible way.',
+                    attribute: attrName,
+                    isDisabled: true
+                };
+                this.logDebug('roll - disabled result', result);
+                return result;
+            }
+
             // Roll 1-100
             const roll = Math.floor(Math.random() * 100) + 1;
             
@@ -59,7 +86,8 @@ class AidChaosRoller {
                 resultType, 
                 humanMessage, 
                 guidanceText,
-                attribute: attrName
+                attribute: attrName,
+                isDisabled: false
             };
             
             this.logDebug('roll - result', result);
@@ -72,7 +100,8 @@ class AidChaosRoller {
                 resultType: 'Critical Success',
                 humanMessage: 'Defaulted to critical success on error.',
                 guidanceText: 'Defaulted to critical success on error.',
-                attribute: attrName
+                attribute: attrName,
+                isDisabled: false
             };
         }
     }
@@ -123,10 +152,16 @@ class AidChaosRoller {
     // Build the result output marker for display
     // rollResults: array of roll result objects
     // Returns formatted marker string (e.g., "[AIDCHAOS Strength (45/70): Success]")
+    // For disabled attributes shows "[AIDCHAOS Magic (disabled): Critical Failure]"
     buildResultMarker(rollResults) {
         const parts = [];
         for (const result of rollResults) {
-            parts.push(result.attribute + ' (' + result.roll + '/' + result.base + '): ' + result.resultType);
+            if (result.isDisabled) {
+                // Show "(disabled)" instead of roll/base for disabled attributes
+                parts.push(result.attribute + ' (disabled): ' + result.resultType);
+            } else {
+                parts.push(result.attribute + ' (' + result.roll + '/' + result.base + '): ' + result.resultType);
+            }
         }
         return '[AIDCHAOS ' + parts.join(', ') + ']\n';
     }

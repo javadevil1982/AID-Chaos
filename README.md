@@ -1,6 +1,6 @@
 # CHAOS – Controlled Heuristic Adaptive Outcome System
 
-**Current Version 0.9.2** | Made by **Javadevil**
+**Current Version 0.9.3** | Made by **Javadevil**
 
 **CHAOS** is an invisible dice-rolling system for AI Dungeon that adds structured, attribute-based resolution mechanics to player actions without requiring any commands or explicit dice notation.
 
@@ -11,7 +11,7 @@
 Traditional text-based AI adventures often feel arbitrary — success and failure depend purely on what the AI decides to narrate. CHAOS fixes this by introducing a hidden layer of mechanical fairness:
 
 - **Automatic attribute detection** from player actions (e.g., "push the door" → Strength check)
-- **W100 dice rolls** using character stats (1–10)
+- **W100 dice rolls** using character stats (1–10) or **disabled state** for impossible actions (v0.9.3+)
 - **Natural outcome integration** where the AI narrates results based on roll classification
 - **Zero player interaction** — no commands, no visible dice, just seamless storytelling
 - **Optional result display** to show roll outcomes to the player (v0.9.1+)
@@ -24,7 +24,7 @@ The system operates entirely behind the scenes, maintaining immersion while ensu
 
 ### 1. Attribute System
 
-Each character has **five core attributes** rated from **1 to 10**:
+Each character has **five core attributes** rated from **1 to 10** or **disabled**:
 
 | Attribute | Examples |
 |-----------|----------|
@@ -37,6 +37,47 @@ Each character has **five core attributes** rated from **1 to 10**:
 Each attribute includes an extensive trigger word list (both single words and multi-word phrases) that the system uses to automatically detect which stat should be tested.
 
 You can modify attribute trigger words or add own attributes in your copy of the library source code (search for `static getDefaultAttributes()`). Therefore, it is not necessary to use the 5 default attributes.
+
+#### Disabled Attributes (NEW in v0.9.3)
+
+CHAOS supports a special **disabled state** for attributes that are fundamentally impossible for a character:
+
+- **Keywords**: Use `unavailable`, `disabled`, `impossible`, `forbidden`, or `inaccessible` in place of a numeric value
+- **Internal representation**: Stored as `-1` (constant `ATTRIBUTE_DISABLED`)
+- **Behavior**: No dice roll occurs; the attribute automatically results in **Critical Failure**
+- **Display**: Shown as `disabled` in story cards and as `(disabled)` in result markers
+
+**When to use disabled attributes:**
+
+- A race that cannot use magic (e.g., "Magic: disabled")
+- A character with a missing limb (e.g., "Dexterity: disabled")
+- A mute character (e.g., "Charisma: disabled" for verbal interactions)
+- Any inherent, unchangeable inability
+
+**Example: Magic Attribute**
+
+If you add a custom "Magic" attribute and want certain races to be unable to cast spells:
+
+**Warrior Class Card** (base values):
+```
+Attributes:
+- Strength: 8
+- Magic: 3
+```
+
+**Dwarf Race Card** (modifiers):
+```
+Attribute-Modifiers:
+- Strength: +1
+- Magic: disabled
+```
+
+**Result**: A Dwarf Warrior's final Magic attribute is `disabled`. Any magic-related action automatically fails critically, and the player sees:
+```
+[AIDCHAOS Magic (disabled): Critical Failure]
+```
+
+This clarifies to the player that failure is due to character limitations, not bad luck.
 
 ### 2. Detection Logic
 
@@ -63,6 +104,7 @@ Base Value = 20 + (Attribute × 5)
 - Attribute 1 → Base 25  
 - Attribute 5 → Base 45  
 - Attribute 10 → Base 70
+- Attribute disabled → Automatic Critical Failure (no roll)
 
 ### 4. Outcome Classification
 
@@ -73,6 +115,7 @@ Base Value = 20 + (Attribute × 5)
 | Partial Success | Roll ≤ (Base + 15) | 15% | 15% | 15% |
 | Failure | Roll ≤ (90 + Base × 0.1) | ≈ 52% | ≈ 34% | ≈ 12% |
 | Critical Failure | Roll > (90 + Base × 0.1) | ≈  8% | ≈ 6% | ≈ 3% |
+| Critical Failure | Attribute = disabled | 100% | 100% | 100% |
 
 To make the differences clearer, here are approximate probability breakdowns for three representative attribute values (computed from the formula above):
 
@@ -97,7 +140,7 @@ To make the differences clearer, here are approximate probability breakdowns for
   - Failure ≈ 12% (rolls 86..97)
   - Critical Failure ≈ 3% (rolls 98..100)
 
-The system ensures that even low-stat characters have a reasonable chance of success, while high-stat characters feel powerful without being infallible.
+The system ensures that even low-stat characters have a reasonable chance of success, while high-stat characters feel powerful without being infallible. **Disabled attributes always fail critically without rolling**, making inherent limitations clear.
 
 ### 5. Context Injection
 
@@ -257,7 +300,32 @@ Attributes:
 - Perception: 5
 ```
 
-Valid values are **1 to 10**. Higher values = higher success chance.
+Valid values are **1 to 10** or **disabled**. Higher numeric values = higher success chance. Disabled attributes automatically produce Critical Failure.
+
+**Using Disabled Attributes:**
+
+Instead of a number, use any of these keywords (case-insensitive):
+- `disabled`
+- `unavailable`
+- `impossible`
+- `forbidden`
+- `inaccessible`
+
+**Example with custom Magic attribute:**
+```
+Attributes:
+- Strength: 7
+- Dexterity: 7
+- Intelligence: 3
+- Charisma: 4
+- Perception: 6
+- Magic: disabled
+```
+
+When the player attempts a magic-related action, they see:
+```
+[AIDCHAOS Magic (disabled): Critical Failure]
+```
 
 ### Inheritance Processed (NEW in v0.9.2)
 
@@ -377,6 +445,24 @@ Attribute-Modifiers:
 - Perception: +1
 ```
 
+**Example with disabled attribute (Dwarf race cannot use magic):**
+
+**Story Card Settings:**
+- **Type**: `Race`
+- **Title**: `Dwarf`
+
+**Entry Content:**
+```
+Sturdy and resilient, dwarves are master craftsmen and warriors. Their innate resistance to magic makes them unable to cast spells themselves.
+
+Attribute-Modifiers:
+- Strength: +2
+- Dexterity: -1
+- Magic: disabled
+```
+
+**Important**: If either the base value OR any modifier is disabled, the final attribute will be disabled. This ensures that racial or class restrictions are properly enforced.
+
 ##### Plot Essentials Format
 
 In your scenario's **Plot Essentials** (memory), include lines that specify the character's class and race:
@@ -410,6 +496,18 @@ Attributes:
 - Perception: 6
 ```
 
+**Example with disabled attribute (Dwarf Warrior with no magic):**
+- **Warrior base values**: Strength 8, Magic 3
+- **Dwarf modifiers**: Strength +2, Magic disabled
+- **Final values**: Strength 10, Magic disabled
+
+Generated card:
+```
+Attributes:
+- Strength: 10
+- Magic: disabled
+```
+
 ##### Important Notes for Scenario Authors
 
 1. **One-time processing**: The inheritance only happens when `"AidChaos Configuration"` doesn't exist or has no valid attribute values. Once created/updated, subsequent loads use only that card.
@@ -418,227 +516,17 @@ Attributes:
 
 3. **Fallback to defaults**: If a Class or Race card is not found, or if specific attributes are not defined, CHAOS uses the default value of 5.
 
-4. **Value clamping**: All final values are clamped to the range 1-10.
+4. **Value clamping**: All final numeric values are clamped to the range 1-10. Disabled attributes remain disabled.
 
-5. **Optional feature**: If you don't create Class/Race cards with attribute sections, CHAOS simply uses default values (all 5s).
+5. **Disabled inheritance**: If a base attribute OR any modifier is disabled, the final value is disabled. This ensures restrictions are properly enforced.
 
-##### Customizing Inheritance Types
-
-By default, CHAOS uses:
-- `Class` as the base values source
-- `Race` as the modifier source
-
-Scenario authors can customize these by modifying the constants in `src/library/AidChaosMain.js` inside the `AidChaos()` function (look for the **SCRIPT CONFIGURATION** section near the top):
-
-```javascript
-function AidChaos(hook, inText, inStop) {
-    "use strict";
-
-    // ...
-
-    // =========================================================================
-    // SCRIPT CONFIGURATION
-    // Modify these settings to customize CHAOS behavior
-    // =========================================================================
-
-    // Enable verbose debug output when true
-    const showDebugOutput = false;
-
-    // Story card type that provides base attribute values (e.g., "Class", "Profession")
-    // CHAOS will search memory for "Class: Warrior" and load attributes from that card
-    const baseValuesType = "Class";
-
-    // Story card types that provide attribute modifiers (e.g., ["Race", "Origin"])
-    // CHAOS will search memory for "Race: Elf" and apply +/- modifiers from that card
-    const modValuesTypes = ["Race"];
-
-    // =========================================================================
-    // END OF CONFIGURATION
-    // =========================================================================
-```
-
-**Examples for different themes:**
-
-| Theme | baseValuesType | modValuesTypes |
-|-------|----------------|----------------|
-| Fantasy RPG | `"Class"` | `["Race"]` |
-| Sci-Fi | `"Profession"` | `["Species", "Augmentation"]` |
-| Modern | `"Background"` | `["Training"]` |
-| Superhero | `"Archetype"` | `["Origin", "Power Source"]` |
-
-**Adding multiple modifier types:**
-
-You can add multiple modifier types to the array. Each will be applied in order:
-
-```javascript
-const modValuesTypes = ["Race", "Origin", "Blessing"];
-```
-
-With this configuration, CHAOS will:
-1. Load base values from the `Class` card
-2. Apply modifiers from the `Race` card
-3. Apply modifiers from the `Origin` card
-4. Apply modifiers from the `Blessing` card
-5. Clamp all values to 1-10
-
-**Important:** The type names must exactly match the `Type` field of your story cards in AI Dungeon.
-
----
-
-## Design Philosophy
-
-### Why CHAOS?
-
-1. **Fairness without breaking immersion**  
-   Players get mechanical consistency without needing to type commands or see dice rolls.
-
-2. **Natural language integration**  
-   Works with how people already write actions ("I try to lift the gate" instead of "/roll strength").
-
-3. **AI-friendly guidance**  
-   Instead of forcing the AI to improvise outcomes, CHAOS provides structured results that the AI can interpret narratively.
-
-4. **Extensible foundation**  
-   The base system is intentionally minimal — easy to understand, modify, and build upon.
-
----
-
-## Advanced Customization
-
-### Trigger Words
-
-The default trigger lists are extensive (30+ words per attribute). Advanced users can modify these in the `getDefaultAttributes()` method within `library.js`.
-
-### Guidance Text
-
-Each attribute has **five outcome-specific guidance messages** (critical success, success, partial success, failure, critical failure). These are also customizable in the attribute definitions.
-
-Example for Strength:
-```javascript
-guidance_text_critical_success: 'The character greatly exceeds normal physical limits and gains an impressive advantage.'
-guidance_text_success: 'The character succeeds at the physical task in a solid and believable way.'
-// ...etc
-```
-
----
-
-## Compatibility
-
-### General Compatibility
-
-CHAOS is designed to work alongside other AI Dungeon scripts. It follows best practices:
-
-- **Hook-based architecture** (input/context/output modifiers)
-- **State preservation** through `state.AidChaosConfig`
-- **Minimal global namespace pollution**
-- **Graceful error handling**
-- **Auto-detection and skipping** of other script activity
-
-### Compatibility with Auto-Cards (v0.9.1+)
-
-CHAOS is now fully compatible with the **Auto-Cards** script. Both scripts can coexist in the same scenario without conflicts.
-
-#### How Compatibility Works
-
-CHAOS includes automatic detection of Auto-Cards activity:
-
-- **Recognizes Auto-Cards patterns**: `/ac` commands, `CONFIRM DELETE`, `>>> please select "continue"`, `{title: ...}` headers, and memory operations
-- **Skips CHAOS processing**: When Auto-Cards is detected, CHAOS passes the text through unchanged
-- **Cleans markers**: Both scripts automatically remove each other's output markers to prevent interference
-
-#### Setting Up Both Scripts Together
-
-**Execution Order in Modifiers:**
-
-The proper hook order ensures both scripts work correctly:
-
-**Input Modifier:**
-```javascript
-// Your "Input" tab with both CHAOS and Auto-Cards
-const modifier = (text) => {
-    // CHAOS first to clean Auto-Cards markers
-    text = AidChaos("input", text);
-    // Then Auto-Cards processes input
-    text = AutoCards("input", text);
-    return { text };
-};
-modifier(text);
-```
-
-**Context Modifier:**
-```javascript
-// Your "Context" tab with both CHAOS and Auto-Cards
-const modifier = (text) => {
-    // CHAOS first to perform attribute rolls
-    [text, stop] = AidChaos("context", text, stop);
-    // Then Auto-Cards processes context and injects card information
-    text = AutoCards("context", text, stop);
-    return { text, stop };
-};
-modifier(text);
-```
-
-**Output Modifier:**
-```javascript
-// Your "Output" tab with both CHAOS and Auto-Cards
-const modifier = (text) => {
-    // Auto-Cards first to process card generation messages
-    text = AutoCards("output", text);
-    // Then CHAOS adds roll result markers (if enabled)
-    text = AidChaos("output", text);
-    return { text };
-};
-modifier(text);
-```
-
-#### Key Points
-
-1. **Input & Context**: CHAOS runs first, then Auto-Cards
-   - CHAOS cleans any leftover markers and performs rolls
-   - Auto-Cards injects card information and memory updates
-   - No interference because CHAOS skips when it detects Auto-Cards activity
-
-2. **Output**: Auto-Cards runs first, then CHAOS
-   - Auto-Cards handles card generation messages
-   - CHAOS appends roll result markers (if Result Output is enabled)
-   - Results appear at the start of the AI response without disrupting Auto-Cards messages
-
-3. **Separate Configuration Cards**
-   - CHAOS uses: `"AidChaos Configuration"` story card
-   - Auto-Cards uses: `"Configure Auto-Cards"` story card
-   - No overlap or conflicts
-
-4. **State Management**
-   - CHAOS stores data in: `state.AidChaosConfig` and `state.AidChaosLastRoll`
-   - Auto-Cards stores data in: `state.AutoCards` and `state.LSIv2`
-   - Both use different keys and don't interfere
-
-#### Example Scenario Setup
-
-If you want to use both CHAOS and Auto-Cards in the same scenario:
-
-1. Follow CHAOS installation steps (copy library to Library tab)
-2. Install Auto-Cards normally (add AutoCards to Library tab, call in hooks)
-3. Update your Input, Context, and Output hooks as shown above
-4. Create the configuration card `"AidChaos Configuration"` (for CHAOS settings) if you want.
-5. Save and play!
-
-#### Testing Compatibility
-
-To verify both scripts are working correctly:
-
-- **CHAOS**: Check the `"AidChaos Configuration"` card exists and updates
-- **Auto-Cards**: Check that auto-generated plot cards are created as expected
-- **Result Output**: If enabled, roll results appear before AI responses without disrupting story
-- **No conflicts**: Both scripts' functionality should work independently
-
-If you encounter issues, ensure the hook order is correct and that both scripts are up to date.
+6. **Optional feature**: If you don't create Class/Race cards with attribute sections, CHAOS simply uses default values (all 5s).
 
 ---
 
 ## Roadmap & Future Features
 
-Currently implemented (v0.9.2):
+Currently implemented (v0.9.3):
 - ✅ Automatic attribute detection (explicit mentions + trigger keywords)
 - ✅ W100 roll formula with 5-tier outcome classification
 - ✅ Context injection with guidance text
@@ -649,6 +537,7 @@ Currently implemented (v0.9.2):
 - ✅ Compatibility with Auto-Cards script (v0.9.1)
 - ✅ Support for the Character Creator mode (v0.9.2)
 - ✅ Automatic inheritance of attributes from Class and Race cards (v0.9.2)
+- ✅ Disabled attribute state with automatic critical failure (v0.9.3)
 
 Not yet implemented (planned):
 - ⬜ Attribute Templates for different genres (fantasy, sci-fi, etc.)
@@ -705,7 +594,14 @@ Set `showDebugOutput = true` in `library.js` (around line 27) to enable console 
 
 ### Version History
 
-**v0.9.2** (Current)
+**v0.9.3** (Current)
+- Added disabled attribute state for fundamentally impossible actions
+- Disabled attributes automatically produce Critical Failure without rolling
+- Support for keywords: `unavailable`, `disabled`, `impossible`, `forbidden`, `inaccessible`
+- Display improvements: `(disabled)` marker in result output, `disabled` text in story cards
+- Disabled state propagates through inheritance: if base OR modifier is disabled, result is disabled
+
+**v0.9.2**
 - Support for the Character Creator mode
 - Added automatic inheritance of attributes from Class and Race cards
 - Added `Inheritance processed` flag to prevent repeated inheritance attempts

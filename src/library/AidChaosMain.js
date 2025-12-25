@@ -4,7 +4,7 @@
 // =====================================================================
 
 /*
-AidChaos - Controlled Heuristic Adaptive Outcome System v0.9.2
+AidChaos - Controlled Heuristic Adaptive Outcome System v0.9.3
 Made by Javadevil - December 2024
 
 This AI Dungeon script automatically adds invisible dice-based resolution mechanics to player actions.

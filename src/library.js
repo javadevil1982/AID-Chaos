@@ -302,6 +302,13 @@ class AidChaosStoryCards {
 // Purpose: Load, parse, and normalize the AidChaos Configuration story card
 // Supports automatic attribute inheritance from Class and Race story cards
 // =====================================================================
+
+// Constant for disabled attributes - triggers automatic critical failure
+const ATTRIBUTE_DISABLED = -1;
+
+// Keywords that mark an attribute as disabled (case-insensitive)
+const DISABLED_KEYWORDS = ['unavailable', 'disabled', 'impossible', 'forbidden', 'inaccessible'];
+
 class AidChaosConfiguration {
     constructor(logDebug, storyCardsManager, attributesManager, baseValuesType, modValuesTypes) {
         this.logDebug = logDebug;
@@ -419,8 +426,29 @@ class AidChaosConfiguration {
         }
     }
 
+    // Check if a value represents a disabled attribute
+    // Returns true for ATTRIBUTE_DISABLED (-1) or disabled keyword strings
+    _isDisabledValue(value) {
+        if (value === ATTRIBUTE_DISABLED) return true;
+        if (typeof value === 'string') {
+            return DISABLED_KEYWORDS.includes(value.toLowerCase().trim());
+        }
+        return false;
+    }
+
+    // Parse a single attribute value from text
+    // Returns ATTRIBUTE_DISABLED for disabled keywords, or the numeric value
+    _parseAttributeValue(valueStr) {
+        const trimmed = valueStr.trim().toLowerCase();
+        if (DISABLED_KEYWORDS.includes(trimmed)) {
+            return ATTRIBUTE_DISABLED;
+        }
+        const num = Number(valueStr);
+        return Number.isFinite(num) ? num : null;
+    }
+
     // Check if card text contains any valid attribute values
-    // Returns true if at least one attribute with a numeric value is found
+    // Returns true if at least one attribute with a numeric value or disabled keyword is found
     _cardHasAttributeValues(raw, defaultAttrKeys) {
         this.logDebug('_cardHasAttributeValues - start');
         
@@ -433,16 +461,20 @@ class AidChaosConfiguration {
         
         const attrLines = attrSectionMatch[1].split(/\n/);
         for (const line of attrLines) {
-            // Match lines like "- Strength: 5" (with actual numeric value, not placeholder)
-            const m = line.match(/^\s*-?\s*([A-Za-z][A-Za-z0-9 _'\-]*)\s*:\s*(\d+)\s*$/);
+            // Match lines like "- Strength: 5" or "- Magic: disabled"
+            const m = line.match(/^\s*-?\s*([A-Za-z][A-Za-z0-9 _'\-]*)\s*:\s*(\S+)\s*$/);
             if (m) {
                 const rawKey = m[1].trim();
-                const val = Number(m[2]);
+                const rawValue = m[2].trim();
                 // Check if it's a known attribute with a valid value
                 const matchKey = defaultAttrKeys.find(dk => dk.toLowerCase() === rawKey.toLowerCase());
-                if (matchKey && Number.isFinite(val) && val >= 1 && val <= 10) {
-                    this.logDebug('_cardHasAttributeValues - found valid attribute', matchKey, val);
-                    return true;
+                if (matchKey) {
+                    const val = this._parseAttributeValue(rawValue);
+                    // Valid if it's a number in range 1-10 or disabled
+                    if (val === ATTRIBUTE_DISABLED || (Number.isFinite(val) && val >= 1 && val <= 10)) {
+                        this.logDebug('_cardHasAttributeValues - found valid attribute', matchKey, val);
+                        return true;
+                    }
                 }
             }
         }
@@ -499,6 +531,7 @@ class AidChaosConfiguration {
 
     // Apply attribute modifiers from Race (and other modValuesTypes) story cards
     // Searches memory for each type and applies +/- modifiers
+    // If either base or modifier is ATTRIBUTE_DISABLED, result is ATTRIBUTE_DISABLED
     _applyModifiersFromCards(settings, defaultAttrKeys) {
         this.logDebug('_applyModifiersFromCards - start');
         try {
@@ -539,8 +572,15 @@ class AidChaosConfiguration {
                 // Apply modifiers to settings
                 for (const [key, modifier] of Object.entries(modifiers)) {
                     const oldValue = settings.attributes[key] || 5;
-                    settings.attributes[key] = oldValue + modifier;
-                    this.logDebug('_applyModifiersFromCards - modified', key, oldValue, '+', modifier, '=', settings.attributes[key]);
+                    
+                    // If either base or modifier is disabled, result is disabled
+                    if (oldValue === ATTRIBUTE_DISABLED || modifier === ATTRIBUTE_DISABLED) {
+                        settings.attributes[key] = ATTRIBUTE_DISABLED;
+                        this.logDebug('_applyModifiersFromCards - disabled', key);
+                    } else {
+                        settings.attributes[key] = oldValue + modifier;
+                        this.logDebug('_applyModifiersFromCards - modified', key, oldValue, '+', modifier, '=', settings.attributes[key]);
+                    }
                 }
             }
             
@@ -569,6 +609,7 @@ class AidChaosConfiguration {
 
     // Parse "Attributes:" section from card entry text
     // Returns { AttrName: value } for found attributes
+    // Values can be numbers (1-10) or ATTRIBUTE_DISABLED (-1)
     _parseAttributesSection(entry, defaultAttrKeys) {
         this.logDebug('_parseAttributesSection - start');
         const result = {};
@@ -583,14 +624,15 @@ class AidChaosConfiguration {
             
             const attrLines = attrSectionMatch[1].split(/\n/);
             for (const line of attrLines) {
-                // Match lines like "- Strength: 5"
-                const m = line.match(/^\s*-\s*([A-Za-z][A-Za-z0-9 _'\-]*)\s*:\s*(\d+)/);
+                // Match lines like "- Strength: 5" or "- Magic: disabled"
+                const m = line.match(/^\s*-\s*([A-Za-z][A-Za-z0-9 _'\-]*)\s*:\s*(\S+)/);
                 if (m) {
                     const rawKey = m[1].trim();
-                    const val = Number(m[2]);
+                    const rawValue = m[2].trim();
                     // Match to canonical attribute name
                     const matchKey = defaultAttrKeys.find(dk => dk.toLowerCase() === rawKey.toLowerCase()) || rawKey;
-                    if (Number.isFinite(val)) {
+                    const val = this._parseAttributeValue(rawValue);
+                    if (val !== null) {
                         result[matchKey] = val;
                     }
                 }
@@ -603,7 +645,7 @@ class AidChaosConfiguration {
     }
 
     // Parse "Attribute-Modifiers:" section from card entry text
-    // Returns { AttrName: modifier } where modifier is a signed integer
+    // Returns { AttrName: modifier } where modifier is a signed integer or ATTRIBUTE_DISABLED
     _parseModifiersSection(entry, defaultAttrKeys) {
         this.logDebug('_parseModifiersSection - start');
         const result = {};
@@ -618,14 +660,15 @@ class AidChaosConfiguration {
             
             const modLines = modSectionMatch[1].split(/\n/);
             for (const line of modLines) {
-                // Match lines like "- Strength: +2" or "- Intelligence: -1"
-                const m = line.match(/^\s*-\s*([A-Za-z][A-Za-z0-9 _'\-]*)\s*:\s*([+\-]?\d+)/);
+                // Match lines like "- Strength: +2", "- Intelligence: -1", or "- Magic: disabled"
+                const m = line.match(/^\s*-\s*([A-Za-z][A-Za-z0-9 _'\-]*)\s*:\s*(\S+)/);
                 if (m) {
                     const rawKey = m[1].trim();
-                    const val = Number(m[2]);
+                    const rawValue = m[2].trim();
                     // Match to canonical attribute name
                     const matchKey = defaultAttrKeys.find(dk => dk.toLowerCase() === rawKey.toLowerCase()) || rawKey;
-                    if (Number.isFinite(val)) {
+                    const val = this._parseAttributeValue(rawValue);
+                    if (val !== null) {
                         result[matchKey] = val;
                     }
                 }
@@ -714,11 +757,14 @@ class AidChaosConfiguration {
         }
     }
 
-    // Clamp all attribute values to 1-10
+    // Clamp all attribute values to 1-10, preserving ATTRIBUTE_DISABLED (-1)
     _clampAttributeValues(settings, defaultAttrKeys) {
         for (const k of defaultAttrKeys) {
             if (!(k in settings.attributes)) {
                 settings.attributes[k] = 5;
+            } else if (settings.attributes[k] === ATTRIBUTE_DISABLED) {
+                // Keep disabled as-is
+                continue;
             } else {
                 settings.attributes[k] = Math.min(10, Math.max(1, Math.floor(settings.attributes[k])));
             }
@@ -734,7 +780,9 @@ class AidChaosConfiguration {
         lines.push('');
         lines.push('Attributes:');
         for (const key of Object.keys(attributes)) {
-            lines.push('- ' + key + ': ' + attributes[key]);
+            // Display ATTRIBUTE_DISABLED as "disabled" for player visibility
+            const value = attributes[key] === ATTRIBUTE_DISABLED ? 'disabled' : attributes[key];
+            lines.push('- ' + key + ': ' + value);
         }
         return lines.join('\n');
     }
@@ -767,13 +815,20 @@ class AidChaosConfiguration {
         if (attrSectionMatch) {
             const attrLines = attrSectionMatch[1].split(/\n/);
             for (const line of attrLines) {
-                const m = line.match(/(?:^|\s|>)*\s*-?\s*([A-Za-z][A-Za-z0-9 _'\-]+)\s*:\s*(-?\d+)/);
+                // Match lines like "- Strength: 5" or "- Magic: disabled"
+                const m = line.match(/(?:^|\s|>)*\s*-?\s*([A-Za-z][A-Za-z0-9 _'\-]+)\s*:\s*(\S+)/);
                 if (m) {
                     const rawKey = m[1].trim();
-                    const val = Number(m[2]);
+                    const rawValue = m[2].trim();
                     const matchKey = defaultAttrKeys.find(dk => dk.toLowerCase() === rawKey.toLowerCase()) || rawKey;
-                    if (Number.isFinite(val)) {
-                        settings.attributes[matchKey] = Math.min(10, Math.max(1, Math.floor(val)));
+                    const val = this._parseAttributeValue(rawValue);
+                    if (val !== null) {
+                        // Clamp numeric values, keep disabled as-is
+                        if (val === ATTRIBUTE_DISABLED) {
+                            settings.attributes[matchKey] = ATTRIBUTE_DISABLED;
+                        } else {
+                            settings.attributes[matchKey] = Math.min(10, Math.max(1, Math.floor(val)));
+                        }
                     }
                 }
             }
@@ -971,20 +1026,47 @@ class AidChaosParser {
 // AidChaosRoller: W100 dice rolling and outcome classification
 // Purpose: Perform attribute rolls and determine success/failure outcomes
 // =====================================================================
+
+// Reference to disabled attribute constant (defined in AidChaosConfiguration)
+// Using same value to avoid circular dependencies
+const ATTRIBUTE_DISABLED_VALUE = -1;
+
 class AidChaosRoller {
     constructor(logDebug, attributesManager) {
         this.logDebug = logDebug;
         this.attributes = attributesManager;
     }
 
+    // Check if an attribute value represents a disabled attribute
+    isDisabledAttribute(attrValue) {
+        return attrValue === ATTRIBUTE_DISABLED_VALUE;
+    }
+
     // Perform a W100 roll for an attribute and classify the outcome
     // attrName: attribute name (e.g., 'Strength')
-    // attrValue: attribute value (1-10)
-    // Returns { roll, base, resultType, humanMessage, guidanceText }
+    // attrValue: attribute value (1-10) or ATTRIBUTE_DISABLED (-1)
+    // Returns { roll, base, resultType, humanMessage, guidanceText, isDisabled }
     roll(attrName, attrValue) {
         this.logDebug('roll - start', attrName, attrValue);
         
         try {
+            // Check for disabled attribute - automatic critical failure without rolling
+            if (this.isDisabledAttribute(attrValue)) {
+                this.logDebug('roll - attribute is disabled, automatic critical failure');
+                const result = {
+                    roll: null,
+                    base: null,
+                    resultType: 'Critical Failure',
+                    humanMessage: 'This attribute is disabled. The action is impossible for this character.',
+                    guidanceText: this.attributes.getGuidanceText(attrName, 'critical_failure') || 
+                        'This attribute is disabled for the character. The action automatically fails in the worst possible way.',
+                    attribute: attrName,
+                    isDisabled: true
+                };
+                this.logDebug('roll - disabled result', result);
+                return result;
+            }
+
             // Roll 1-100
             const roll = Math.floor(Math.random() * 100) + 1;
             
@@ -1028,7 +1110,8 @@ class AidChaosRoller {
                 resultType, 
                 humanMessage, 
                 guidanceText,
-                attribute: attrName
+                attribute: attrName,
+                isDisabled: false
             };
             
             this.logDebug('roll - result', result);
@@ -1041,7 +1124,8 @@ class AidChaosRoller {
                 resultType: 'Critical Success',
                 humanMessage: 'Defaulted to critical success on error.',
                 guidanceText: 'Defaulted to critical success on error.',
-                attribute: attrName
+                attribute: attrName,
+                isDisabled: false
             };
         }
     }
@@ -1092,10 +1176,16 @@ class AidChaosRoller {
     // Build the result output marker for display
     // rollResults: array of roll result objects
     // Returns formatted marker string (e.g., "[AIDCHAOS Strength (45/70): Success]")
+    // For disabled attributes shows "[AIDCHAOS Magic (disabled): Critical Failure]"
     buildResultMarker(rollResults) {
         const parts = [];
         for (const result of rollResults) {
-            parts.push(result.attribute + ' (' + result.roll + '/' + result.base + '): ' + result.resultType);
+            if (result.isDisabled) {
+                // Show "(disabled)" instead of roll/base for disabled attributes
+                parts.push(result.attribute + ' (disabled): ' + result.resultType);
+            } else {
+                parts.push(result.attribute + ' (' + result.roll + '/' + result.base + '): ' + result.resultType);
+            }
         }
         return '[AIDCHAOS ' + parts.join(', ') + ']\n';
     }
@@ -1392,7 +1482,7 @@ class AidChaosHandlers {
 // =====================================================================
 
 /*
-AidChaos - Controlled Heuristic Adaptive Outcome System v0.9.2
+AidChaos - Controlled Heuristic Adaptive Outcome System v0.9.3
 Made by Javadevil - December 2024
 
 This AI Dungeon script automatically adds invisible dice-based resolution mechanics to player actions.
