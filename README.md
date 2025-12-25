@@ -1,6 +1,6 @@
 # CHAOS – Controlled Heuristic Adaptive Outcome System
 
-**Current Version 0.9.1** | Made by **Javadevil**
+**Current Version 0.9.2** | Made by **Javadevil**
 
 **CHAOS** is an invisible dice-rolling system for AI Dungeon that adds structured, attribute-based resolution mechanics to player actions without requiring any commands or explicit dice notation.
 
@@ -259,6 +259,19 @@ Attributes:
 
 Valid values are **1 to 10**. Higher values = higher success chance.
 
+### Inheritance Processed (NEW in v0.9.2)
+
+```
+Inheritance processed: false
+```
+
+This internal flag tracks whether CHAOS has already attempted to load attribute values from Class and Race story cards. Once set to `true`, CHAOS will not attempt inheritance again, even if the card is edited.
+
+**When to reset this flag:**
+- Set to `false` if you want CHAOS to re-read attributes from Class/Race cards on the next action
+- This is useful if you've updated your Class or Race cards and want to apply new values
+- After resetting, CHAOS will derive values again and set it back to `true`
+
 ---
 
 ### Pre-Creating the Configuration Card
@@ -276,6 +289,7 @@ Create a story card titled **"AidChaos Configuration"** with this content:
 ```
 AidChaos enabled: true
 Result Output enabled: false
+Inheritance processed: true
 
 Attributes:
 - Strength: 5
@@ -292,6 +306,7 @@ If your scenario supports player input (recommended for non-Character-Creator sc
 ```
 AidChaos enabled: true
 Result Output enabled: false
+Inheritance processed: true
 
 Attributes:
 - Strength: ${Your Strength (1-10)}
@@ -307,6 +322,166 @@ Attributes:
 - Players should enter **only numeric values from 1 to 10**
 - If invalid values are entered, CHAOS will automatically clamp them to the valid range (1-10)
 - Once replaced, the card will contain the final numeric values for the session
+
+#### Option C: Automatic Inheritance from Class and Race Cards (NEW in v0.9.2)
+
+CHAOS can automatically derive attribute values from **Class** and **Race** story cards. This is ideal for scenarios with predefined character classes and races, providing a seamless RPG experience without manual configuration.
+
+##### How It Works
+
+When the **"AidChaos Configuration"** card does not exist, or exists but has no valid attribute values and `Inheritance processed` is `false`, CHAOS will:
+
+1. **Load base values from a Class card**: Searches the Plot Essentials (memory) for a line like `Class: Warrior`, then finds the story card of type `Class` with title `Warrior` and reads its `Attributes:` section.
+
+2. **Apply modifiers from Race cards**: Searches for `Race: Elf` in Plot Essentials, finds the `Race` type card titled `Elf`, and applies `Attribute-Modifiers:` (like `+2` or `-1`).
+
+3. **Create/update the configuration card**: After calculating final values (clamped to 1-10), creates or updates the `"AidChaos Configuration"` card and sets `Inheritance processed: true`.
+
+4. **Clean up source cards**: Removes the `Attributes:` and `Attribute-Modifiers:` sections from Class and Race cards to prevent AI confusion.
+
+##### Setting Up Class Cards
+
+Create story cards with type **"Class"** (set in the card's Type field). Example for a "Warrior" class:
+
+**Story Card Settings:**
+- **Type**: `Class`
+- **Title**: `Warrior`
+
+**Entry Content:**
+```
+A fierce combatant skilled in martial warfare. Warriors excel in physical confrontations and can endure significant punishment.
+
+Attributes:
+- Strength: 8
+- Dexterity: 5
+- Intelligence: 3
+- Charisma: 4
+- Perception: 5
+```
+
+##### Setting Up Race Cards
+
+Create story cards with type **"Race"**. Example for an "Elf" race:
+
+**Story Card Settings:**
+- **Type**: `Race`
+- **Title**: `Elf`
+
+**Entry Content:**
+```
+Graceful and long-lived, elves possess keen senses and natural agility. They are often wise but physically less robust than other races.
+
+Attribute-Modifiers:
+- Strength: -1
+- Dexterity: +2
+- Perception: +1
+```
+
+##### Plot Essentials Format
+
+In your scenario's **Plot Essentials** (memory), include lines that specify the character's class and race:
+
+```
+Character: Aelindra
+Class: Warrior
+Race: Elf
+```
+
+**Note:** The format is simply `Type: Name` (e.g., `Class: Warrior`). CHAOS searches for lines starting with the configured type name followed by a colon.
+
+##### Example Calculation
+
+With the above setup:
+- **Warrior base values**: Strength 8, Dexterity 5, Intelligence 3, Charisma 4, Perception 5
+- **Elf modifiers**: Strength -1, Dexterity +2, Perception +1
+- **Final values**: Strength 7, Dexterity 7, Intelligence 3, Charisma 4, Perception 6
+
+The generated **"AidChaos Configuration"** card will contain:
+```
+AidChaos enabled: true
+Result Output enabled: false
+Inheritance processed: true
+
+Attributes:
+- Strength: 7
+- Dexterity: 7
+- Intelligence: 3
+- Charisma: 4
+- Perception: 6
+```
+
+##### Important Notes for Scenario Authors
+
+1. **One-time processing**: The inheritance only happens when `"AidChaos Configuration"` doesn't exist or has no valid attribute values. Once created/updated, subsequent loads use only that card.
+
+2. **Automatic cleanup**: After reading attribute values, CHAOS removes the `Attributes:` and `Attribute-Modifiers:` blocks from the source cards. This prevents the AI from seeing raw numbers and ensures narrative immersion.
+
+3. **Fallback to defaults**: If a Class or Race card is not found, or if specific attributes are not defined, CHAOS uses the default value of 5.
+
+4. **Value clamping**: All final values are clamped to the range 1-10.
+
+5. **Optional feature**: If you don't create Class/Race cards with attribute sections, CHAOS simply uses default values (all 5s).
+
+##### Customizing Inheritance Types
+
+By default, CHAOS uses:
+- `Class` as the base values source
+- `Race` as the modifier source
+
+Scenario authors can customize these by modifying the constants in `src/library/AidChaosMain.js` inside the `AidChaos()` function (look for the **SCRIPT CONFIGURATION** section near the top):
+
+```javascript
+function AidChaos(hook, inText, inStop) {
+    "use strict";
+
+    // ...
+
+    // =========================================================================
+    // SCRIPT CONFIGURATION
+    // Modify these settings to customize CHAOS behavior
+    // =========================================================================
+
+    // Enable verbose debug output when true
+    const showDebugOutput = false;
+
+    // Story card type that provides base attribute values (e.g., "Class", "Profession")
+    // CHAOS will search memory for "Class: Warrior" and load attributes from that card
+    const baseValuesType = "Class";
+
+    // Story card types that provide attribute modifiers (e.g., ["Race", "Origin"])
+    // CHAOS will search memory for "Race: Elf" and apply +/- modifiers from that card
+    const modValuesTypes = ["Race"];
+
+    // =========================================================================
+    // END OF CONFIGURATION
+    // =========================================================================
+```
+
+**Examples for different themes:**
+
+| Theme | baseValuesType | modValuesTypes |
+|-------|----------------|----------------|
+| Fantasy RPG | `"Class"` | `["Race"]` |
+| Sci-Fi | `"Profession"` | `["Species", "Augmentation"]` |
+| Modern | `"Background"` | `["Training"]` |
+| Superhero | `"Archetype"` | `["Origin", "Power Source"]` |
+
+**Adding multiple modifier types:**
+
+You can add multiple modifier types to the array. Each will be applied in order:
+
+```javascript
+const modValuesTypes = ["Race", "Origin", "Blessing"];
+```
+
+With this configuration, CHAOS will:
+1. Load base values from the `Class` card
+2. Apply modifiers from the `Race` card
+3. Apply modifiers from the `Origin` card
+4. Apply modifiers from the `Blessing` card
+5. Clamp all values to 1-10
+
+**Important:** The type names must exactly match the `Type` field of your story cards in AI Dungeon.
 
 ---
 
@@ -463,15 +638,16 @@ If you encounter issues, ensure the hook order is correct and that both scripts 
 
 ## Roadmap & Future Features
 
-Currently implemented (v0.9.1):
+Currently implemented (v0.9.2):
 - ✅ Automatic attribute detection (explicit mentions + trigger keywords)
 - ✅ W100 roll formula with 5-tier outcome classification
 - ✅ Context injection with guidance text
 - ✅ Auto-generated, editable configuration card
 - ✅ Phrase-aware trigger matching (multi-word support)
 - ✅ Multiple attribute detection in single actions
-- ✅ Optional result output display (NEW in v0.9.1)
-- ✅ Compatibility with Auto-Cards script (NEW in v0.9.1)
+- ✅ Optional result output display (v0.9.1)
+- ✅ Compatibility with Auto-Cards script (v0.9.1)
+- ✅ Automatic inheritance of attributes from Class and Race cards (v0.9.2)
 
 Not yet implemented (planned):
 - ⬜ Support for the Character Creator mode
@@ -529,7 +705,12 @@ Set `showDebugOutput = true` in `library.js` (around line 27) to enable console 
 
 ### Version History
 
-**v0.9.1** (Current)
+**v0.9.2** (Current)
+- Added automatic inheritance of attributes from Class and Race cards
+- Added `Inheritance processed` flag to prevent repeated inheritance attempts
+- Inheritance now also works when configuration card exists but has no valid attributes
+
+**v0.9.1** 
 - Added `Result Output enabled` configuration option
 - Added Auto-Cards compatibility detection and safe pass-through
 - Added marker cleaning for better multi-script support

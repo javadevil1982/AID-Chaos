@@ -4,7 +4,7 @@
 // =====================================================================
 
 /*
-AidChaos - Controlled Heuristic Adaptive Outcome System v0.9.1
+AidChaos - Controlled Heuristic Adaptive Outcome System v0.9.2
 Made by Javadevil - December 2024
 
 This AI Dungeon script automatically adds invisible dice-based resolution mechanics to player actions.
@@ -25,9 +25,26 @@ function AidChaos(hook, inText, inStop) {
 
     const STOP = inStop === true;
 
+    // =========================================================================
+    // SCRIPT CONFIGURATION
+    // Modify these settings to customize CHAOS behavior
+    // =========================================================================
+
     // Enable verbose debug output when true
     // Toggle to `false` to silence internal debug logging
     const showDebugOutput = false;
+
+    // Story card type that provides base attribute values (e.g., "Class", "Profession")
+    // CHAOS will search memory for "Class: Warrior" and load attributes from that card
+    const baseValuesType = "Class";
+
+    // Story card types that provide attribute modifiers (e.g., ["Race", "Origin"])
+    // CHAOS will search memory for "Race: Elf" and apply +/- modifiers from that card
+    const modValuesTypes = ["Race"];
+
+    // =========================================================================
+    // END OF CONFIGURATION
+    // =========================================================================
 
     // Centralized debug logging helper
     function logDebug(...args) {
@@ -48,7 +65,7 @@ function AidChaos(hook, inText, inStop) {
     // Initialize all components
     const attributes = new AidChaosAttributes();
     const storyCards = new AidChaosStoryCards(logDebug);
-    const configuration = new AidChaosConfiguration(logDebug, storyCards, attributes);
+    const configuration = new AidChaosConfiguration(logDebug, storyCards, attributes, baseValuesType, modValuesTypes);
     const detection = new AidChaosDetection(logDebug);
     const parser = new AidChaosParser(logDebug, attributes);
     const roller = new AidChaosRoller(logDebug, attributes);
