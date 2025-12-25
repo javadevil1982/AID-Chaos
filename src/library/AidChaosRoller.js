@@ -5,7 +5,8 @@
 
 // Reference to disabled attribute constant (defined in AidChaosConfiguration)
 // Using same value to avoid circular dependencies
-const ATTRIBUTE_DISABLED_VALUE = -1;
+// Must match ATTRIBUTE_DISABLED in AidChaosConfiguration.js
+const ATTRIBUTE_DISABLED_VALUE = -666;
 
 class AidChaosRoller {
     constructor(logDebug, attributesManager) {
@@ -20,7 +21,7 @@ class AidChaosRoller {
 
     // Perform a W100 roll for an attribute and classify the outcome
     // attrName: attribute name (e.g., 'Strength')
-    // attrValue: attribute value (1-10) or ATTRIBUTE_DISABLED (-1)
+    // attrValue: attribute value (1-10) or ATTRIBUTE_DISABLED_VALUE (-666)
     // Returns { roll, base, resultType, humanMessage, guidanceText, isDisabled }
     roll(attrName, attrValue) {
         this.logDebug('roll - start', attrName, attrValue);

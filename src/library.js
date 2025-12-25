@@ -305,7 +305,8 @@ class AidChaosStoryCards {
 
 // Constant for disabled attributes - triggers automatic critical failure
 // This is only used internally; in story cards, use keywords like "disabled"
-const ATTRIBUTE_DISABLED = -1;
+// Using -666 to avoid collision with legitimate -1 modifiers
+const ATTRIBUTE_DISABLED = -666;
 
 // Keywords that mark an attribute as disabled (case-insensitive)
 // Note: The numeric value -1 in story cards is treated as a normal modifier, NOT as disabled
@@ -1039,7 +1040,8 @@ class AidChaosParser {
 
 // Reference to disabled attribute constant (defined in AidChaosConfiguration)
 // Using same value to avoid circular dependencies
-const ATTRIBUTE_DISABLED_VALUE = -1;
+// Must match ATTRIBUTE_DISABLED in AidChaosConfiguration.js
+const ATTRIBUTE_DISABLED_VALUE = -666;
 
 class AidChaosRoller {
     constructor(logDebug, attributesManager) {
@@ -1054,7 +1056,7 @@ class AidChaosRoller {
 
     // Perform a W100 roll for an attribute and classify the outcome
     // attrName: attribute name (e.g., 'Strength')
-    // attrValue: attribute value (1-10) or ATTRIBUTE_DISABLED (-1)
+    // attrValue: attribute value (1-10) or ATTRIBUTE_DISABLED_VALUE (-666)
     // Returns { roll, base, resultType, humanMessage, guidanceText, isDisabled }
     roll(attrName, attrValue) {
         this.logDebug('roll - start', attrName, attrValue);

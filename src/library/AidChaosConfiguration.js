@@ -6,7 +6,8 @@
 
 // Constant for disabled attributes - triggers automatic critical failure
 // This is only used internally; in story cards, use keywords like "disabled"
-const ATTRIBUTE_DISABLED = -1;
+// Using -666 to avoid collision with legitimate -1 modifiers
+const ATTRIBUTE_DISABLED = -666;
 
 // Keywords that mark an attribute as disabled (case-insensitive)
 // Note: The numeric value -1 in story cards is treated as a normal modifier, NOT as disabled
