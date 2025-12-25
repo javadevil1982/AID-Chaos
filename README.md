@@ -483,6 +483,41 @@ Not yet implemented (planned):
 
 ## Technical Notes
 
+### Modular Source Structure
+
+The `library.js` file is generated from multiple self-contained class files for better maintainability. The source modules are located in `src/library/`:
+
+| File | Class | Purpose |
+|------|-------|---------|
+| `AidChaosAttributes.js` | `AidChaosAttributes` | Default RPG attributes, triggers, guidance texts |
+| `AidChaosStoryCards.js` | `AidChaosStoryCards` | Story card CRUD operations |
+| `AidChaosConfiguration.js` | `AidChaosConfiguration` | Configuration loading and parsing |
+| `AidChaosDetection.js` | `AidChaosDetection` | AutoCards detection, marker cleaning |
+| `AidChaosParser.js` | `AidChaosParser` | Tokenization, attribute detection |
+| `AidChaosRoller.js` | `AidChaosRoller` | W100 dice rolling mechanics |
+| `AidChaosHistory.js` | `AidChaosHistory` | Action type detection, history reading |
+| `AidChaosHandlers.js` | `AidChaosHandlers` | Hook handlers (input, context, output) |
+| `AidChaosMain.js` | - | Entry point `AidChaos()` function |
+
+Each file is a complete, syntactically valid JavaScript file containing one class. This makes editing, testing, and understanding individual components much easier.
+
+### Building library.js
+
+After modifying any source file in `src/library/`, run the build script to regenerate `src/library.js`:
+
+```powershell
+# Simple build
+.\build.ps1
+
+# Verbose build (shows each file being added)
+.\build.ps1 -Verbose
+
+# Watch mode (auto-rebuild on file changes)
+.\build.ps1 -Watch
+```
+
+**Important:** Do not edit `src/library.js` directly! Always edit the source files in `src/library/` and rebuild.
+
 ### Debugging
 
 Set `showDebugOutput = true` in `library.js` (around line 27) to enable console logging. This will output in the AI Dungeon Script Editor:
