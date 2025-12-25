@@ -647,10 +647,10 @@ Currently implemented (v0.9.2):
 - ✅ Multiple attribute detection in single actions
 - ✅ Optional result output display (v0.9.1)
 - ✅ Compatibility with Auto-Cards script (v0.9.1)
+- ✅ Support for the Character Creator mode (v0.9.2)
 - ✅ Automatic inheritance of attributes from Class and Race cards (v0.9.2)
 
 Not yet implemented (planned):
-- ⬜ Support for the Character Creator mode
 - ⬜ Attribute Templates for different genres (fantasy, sci-fi, etc.)
 - ⬜ Further tests to optimize trigger word lists and guidance texts
 - ⬜ Compatibility with other popular scripts (LotRD, etc.)
@@ -706,6 +706,7 @@ Set `showDebugOutput = true` in `library.js` (around line 27) to enable console 
 ### Version History
 
 **v0.9.2** (Current)
+- Support for the Character Creator mode
 - Added automatic inheritance of attributes from Class and Race cards
 - Added `Inheritance processed` flag to prevent repeated inheritance attempts
 - Inheritance now also works when configuration card exists but has no valid attributes
