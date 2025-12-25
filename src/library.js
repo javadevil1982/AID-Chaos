@@ -304,9 +304,11 @@ class AidChaosStoryCards {
 // =====================================================================
 
 // Constant for disabled attributes - triggers automatic critical failure
+// This is only used internally; in story cards, use keywords like "disabled"
 const ATTRIBUTE_DISABLED = -1;
 
 // Keywords that mark an attribute as disabled (case-insensitive)
+// Note: The numeric value -1 in story cards is treated as a normal modifier, NOT as disabled
 const DISABLED_KEYWORDS = ['unavailable', 'disabled', 'impossible', 'forbidden', 'inaccessible'];
 
 class AidChaosConfiguration {
@@ -438,8 +440,10 @@ class AidChaosConfiguration {
 
     // Parse a single attribute value from text
     // Returns ATTRIBUTE_DISABLED for disabled keywords, or the numeric value
+    // Note: The number -1 is treated as a normal numeric value, not as disabled
     _parseAttributeValue(valueStr) {
         const trimmed = valueStr.trim().toLowerCase();
+        // Only text keywords trigger disabled state, not the number -1
         if (DISABLED_KEYWORDS.includes(trimmed)) {
             return ATTRIBUTE_DISABLED;
         }
@@ -727,17 +731,23 @@ class AidChaosConfiguration {
             
             // If we're in an attribute block, check if this line is an attribute line
             if (inAttributeBlock) {
-                // Check if line matches "- AttributeName: value" pattern (case-insensitive for attribute names)
-                const attrLineMatch = line.match(/^\s*-\s*([A-Za-z][A-Za-z0-9 _'\-]*)\s*:\s*[+\-]?\d+\s*$/);
+                // Check if line matches "- AttributeName: value" pattern
+                // Value can be: numeric (+2, -1, 5), or disabled keyword
+                const attrLineMatch = line.match(/^\s*-\s*([A-Za-z][A-Za-z0-9 _'\-]*)\s*:\s*(\S+)\s*$/);
                 if (attrLineMatch) {
-                    const rawKey = attrLineMatch[1].trim();
-                    // Check if it's a known attribute (case-insensitive)
-                    const isKnownAttr = defaultAttrKeys.some(dk => dk.toLowerCase() === rawKey.toLowerCase());
-                    if (isKnownAttr) {
-                        this.logDebug('_cleanCardAttributeBlock - removing attribute line', line.trim());
-                        continue; // Skip this attribute line
-                    }
-                }
+                     const rawKey = attrLineMatch[1].trim();
+                     const rawValue = attrLineMatch[2].trim().toLowerCase();
+                     // Check if it's a known attribute (case-insensitive)
+                     const isKnownAttr = defaultAttrKeys.some(dk => dk.toLowerCase() === rawKey.toLowerCase());
+                     // Check if value is numeric or a disabled keyword
+                     const isNumericValue = /^[+\-]?\d+$/.test(rawValue);
+                     const isDisabledKeyword = DISABLED_KEYWORDS.includes(rawValue);
+                     
+                     if (isKnownAttr && (isNumericValue || isDisabledKeyword)) {
+                         this.logDebug('_cleanCardAttributeBlock - removing attribute line', line.trim());
+                         continue; // Skip this attribute line
+                     }
+                 }
                 // Line doesn't match attribute pattern - we've left the block
                 inAttributeBlock = false;
             }
@@ -816,7 +826,7 @@ class AidChaosConfiguration {
             const attrLines = attrSectionMatch[1].split(/\n/);
             for (const line of attrLines) {
                 // Match lines like "- Strength: 5" or "- Magic: disabled"
-                const m = line.match(/(?:^|\s|>)*\s*-?\s*([A-Za-z][A-Za-z0-9 _'\-]+)\s*:\s*(\S+)/);
+                const m = line.match(/(?:^|\s|>)*\s*-?\s*([A-Za-z][A-Za-z0-9 _'\-]*)\s*:\s*(\S+)/);
                 if (m) {
                     const rawKey = m[1].trim();
                     const rawValue = m[2].trim();
